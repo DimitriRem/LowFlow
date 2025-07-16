@@ -51,19 +51,7 @@
         @media (min-width: 1024px) { /* Three columns on large screens */
             .container {
                 flex-direction: row; /* Revert to row for pushing layout */
-                justify-content: flex-start; /* Align to start, let flex-grow handle space */
-                align-items: flex-start;
-            }
-            .presets-column {
-                position: static; /* No longer absolute, pushes content */
-                flex-basis: 25%; /* Allocate width for presets */
-                margin-right: 20px; /* Reintroduce margin to push main content */
-                height: auto; /* No longer full height of container */
-                z-index: auto; /* No longer floating on z-axis */
-            }
-            .presets-column.collapsed {
-                flex-basis: 50px; /* Collapsed width */
-                width: 50px; /* Ensure width is applied */
+                /* Removed justify-content and align-items as presets-column is fixed */
             }
             .main-app-content {
                 flex-grow: 1; /* Take remaining space */
@@ -74,30 +62,29 @@
         }
         
         .presets-column {
-            width: 100%; /* Full width on small screens */
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
+            position: fixed; /* Changed from static to fixed */
+            top: 50%; /* Center vertically */
+            left: 20px; /* Position from left edge */
+            transform: translateY(-50%); /* Adjust for vertical centering */
+            width: 280px; /* Fixed width for the panel */
+            max-width: 90%; /* Responsive max width for smaller screens */
+            height: auto; /* Allow content to dictate height */
+            max-height: calc(100vh - 40px); /* Max height to fit viewport, with padding */
+            overflow-y: auto; /* Add scroll if content exceeds max height */
+            z-index: 60; /* Ensure it floats above main content, but below overlay */
             background-color: #1a1a1a;
             padding: 20px;
             border-radius: 12px;
             border: 1px solid;
             border-color: #292929 #292929 #716a6a #716a6a;
-            transition: width 0.3s ease-in-out, flex-basis 0.3s ease-in-out; /* Add transition for width and flex-basis */
-            flex-shrink: 0; /* Prevent shrinking below basis initially */
-            overflow: hidden; /* Hide content when collapsed */
+            transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out; /* Transition opacity and visibility */
+            /* Removed flex-basis, margin-right, flex-shrink */
         }
 
         .presets-column.collapsed {
-            flex-basis: 50px; /* Collapsed width */
-            width: 50px; /* Ensure width is applied */
-            padding-left: 10px; /* Smaller padding when collapsed */
-            padding-right: 10px;
-        }
-
-        .presets-column.collapsed .preset-input-group,
-        .presets-column.collapsed .presets-list {
-            display: none; /* Hide content */
+            opacity: 0;
+            visibility: hidden;
+            /* Removed flex-basis, width, padding overrides here */
         }
 
         .presets-column h2 {
@@ -132,7 +119,7 @@
             transition: transform 0.2s ease;
         }
         .presets-column.collapsed #toggleIcon {
-            transform: rotate(-90deg); /* Rotate arrow when collapsed */
+            /* No transform needed here, icon itself changes */
         }
 
 
@@ -315,6 +302,10 @@
             border-radius: 10px; /* Rounded corners for the header bar */
         }
 
+        .header-and-info-row h1 {
+            cursor: pointer; /* Indicate it's clickable */
+        }
+
         .frequency-volume-group {
             display: flex;
             gap: 20px; /* Space between Frequency and Volume displays */
@@ -467,19 +458,35 @@
 
         /* LCD Display Style */
         .lcd-display {
+            position: relative; /* Needed for pseudo-element highlight */
             background: linear-gradient(to bottom, #333333, #000000);
             color: #ff0000; /* Red digits for VT323 */
             font-family: 'VT323', monospace; /* VT323 font */
             font-size: 1.5em; /* Slightly larger font for VT323 */
             padding: 4px 8px;
             border-radius: 4px;
-            border: 1px solid;
-            border-color: #333 #333 #aaa #aaa;
+            /* Replaced solid border with box-shadow for embossed effect */
+            border: none; /* Remove default border */
+            box-shadow: inset 0px -20px 6px 0px rgb(0 0 0), 0px 1px 0px 1px #3f3f3f, 0px -1px 0px 2px #0000009c, inset 0px 0px 2px 1px rgb(255 244 214 / 78%);
             min-width: 40px; /* Ensure enough space for digits */
             text-align: center;
             display: inline-block; /* Allow it to sit next to label */
             margin-left: 10px; /* Space from label */
+            overflow: hidden; /* Hide overflow from highlight */
         }
+
+        .lcd-display::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 50%; /* Cover top half for highlight */
+            background: linear-gradient(to bottom, rgba(255, 255, 255, 0.15), transparent); /* Subtle white highlight */
+            border-radius: 4px; /* Match parent border-radius */
+            pointer-events: none; /* Allow clicks/touches to pass through */
+        }
+
 
         /* Two-column layout for controls */
         .controls-two-column-layout {
@@ -566,7 +573,7 @@
 
         <div class="main-app-content" id="mainAppContent">
             <div class="header-and-info-row">
-                <h1 class="text-3xl font-bold text-white">LowFlow</h1>
+                <h1 class="text-3xl font-bold text-white" id="mainTitle">LowFlow</h1>
                 <div class="frequency-volume-group">
                     <p>Frequency: <span id="frequencyDisplay" class="lcd-display">0</span> Hz</p>
                     <p>Volume: <span id="volumeDisplay" class="lcd-display">0</span></p>
@@ -678,6 +685,7 @@
         const presetsList = document.getElementById('presetsList');
         const presetsColumn = document.getElementById('presetsColumn'); // Get the presets column element
         const presetsToggle = document.getElementById('presetsToggle'); // Get the toggle header
+        const mainTitle = document.getElementById('mainTitle'); // Get the main title element
         const mainAppContent = document.getElementById('mainAppContent'); // Get main app content for tag positioning
 
         // Constants for mapping
@@ -1432,6 +1440,12 @@
         function togglePresetsColumn() {
             isPresetsColumnCollapsed = !isPresetsColumnCollapsed;
             presetsColumn.classList.toggle('collapsed', isPresetsColumnCollapsed);
+            const toggleIcon = document.getElementById('toggleIcon');
+            if (isPresetsColumnCollapsed) {
+                toggleIcon.innerHTML = '&#9658;'; // Right arrow
+            } else {
+                toggleIcon.innerHTML = '&#9660;'; // Down arrow
+            }
             localStorage.setItem('lowflowPresetsColumnCollapsed', isPresetsColumnCollapsed);
             // Re-trigger resize to ensure canvas and tag positioning is correct if layout changes
             window.dispatchEvent(new Event('resize')); 
@@ -1571,6 +1585,8 @@
 
         // Add event listener for the presets column toggle
         presetsToggle.addEventListener('click', togglePresetsColumn);
+        // Add event listener for the main title to toggle presets column
+        mainTitle.addEventListener('click', togglePresetsColumn);
 
 
         // Initial display and canvas draw
@@ -1628,6 +1644,12 @@
         if (storedColumnState !== null) {
             isPresetsColumnCollapsed = JSON.parse(storedColumnState);
             presetsColumn.classList.toggle('collapsed', isPresetsColumnCollapsed);
+            const toggleIcon = document.getElementById('toggleIcon');
+            if (isPresetsColumnCollapsed) {
+                toggleIcon.innerHTML = '&#9658;'; // Right arrow
+            } else {
+                toggleIcon.innerHTML = '&#9660;'; // Down arrow
+            }
         }
     </script>
 </body>
