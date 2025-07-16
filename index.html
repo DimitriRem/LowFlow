@@ -46,22 +46,32 @@
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
             width: 100%; /* Take full width */
             max-width: 1280px; /* Increased max-width for wider design */
+            /* Removed position: relative as presets column no longer floats absolutely */
         }
 
         @media (min-width: 1024px) { /* Three columns on large screens */
             .container {
-                flex-direction: row;
+                flex-direction: row; /* Revert to row for pushing layout */
                 justify-content: flex-start; /* Align to start, let flex-grow handle space */
                 align-items: flex-start;
             }
             .presets-column {
+                position: static; /* No longer absolute, pushes content */
                 flex-basis: 25%; /* Allocate width for presets */
-                margin-right: 20px;
+                margin-right: 20px; /* Reintroduce margin to push main content */
+                height: auto; /* No longer full height of container */
+                z-index: auto; /* No longer floating on z-axis */
+            }
+            .presets-column.collapsed {
+                flex-basis: 50px; /* Collapsed width */
+                width: 50px; /* Ensure width is applied */
             }
             .main-app-content {
                 flex-grow: 1; /* Take remaining space */
                 flex-basis: auto; /* Allow to shrink/grow */
+                width: 100%; /* Ensure it takes full width */
                 margin-left: 0; /* Reset margin as flex-gap handles it */
+                /* No padding-right needed here, as presets-column pushes it */
             }
         }
         
@@ -293,6 +303,7 @@
             display: flex;
             flex-direction: column;
             gap: 20px;
+            position: relative; /* For absolute positioning of the tag */
         }
 
         .header-and-info-row {
@@ -493,6 +504,40 @@
                 gap: 20px;
             }
         }
+
+        /* Active Preset Tag Styling */
+        .active-preset-tag {
+            position: absolute;
+            top: 10px; /* Adjusted dynamically by JS relative to canvas top */
+            left: 0; /* Will be dynamically set */
+            transform: translateX(-50%); /* To center it on its x-position */
+            background-color: var(--preset-color, #ff0000); /* Use CSS variable for color */
+            color: white;
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-family: 'Teko', sans-serif;
+            font-size: 1.0rem;
+            font-weight: bold;
+            text-align: center;
+            white-space: nowrap;
+            z-index: 50; /* Ensure it's above other elements but below overlay */
+            display: none; /* Hidden by default */
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            transition: left 0.05s ease-out; /* Smooth movement */
+        }
+
+        .active-preset-tag::after {
+            content: '';
+            position: absolute;
+            bottom: -8px; /* Half of border-width to make it point down */
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 8px solid var(--preset-color, #ff0000); /* Match tag color */
+        }
     </style>
 </head>
 <body class="selection:bg-purple-200">
@@ -522,7 +567,7 @@
             </ul>
         </div>
 
-        <div class="main-app-content">
+        <div class="main-app-content" id="mainAppContent">
             <div class="header-and-info-row">
                 <h1 class="text-3xl font-bold text-white">LowFlow</h1>
                 <div class="frequency-volume-group">
@@ -531,6 +576,9 @@
                 </div>
             </div>
             
+            <!-- Active Preset Tag -->
+            <div id="activePresetTag" class="active-preset-tag"></div>
+
             <canvas id="soundCanvas" width="800" height="400"></canvas>
 
             <div class="controls-two-column-layout">
@@ -579,7 +627,7 @@
 
     <script>
         // Tone.js setup
-        let oscillator = null;
+        let oscillator = null; // Single oscillator for all sound output (manual interaction and presets)
         let gainNode = null; // Tone.Gain node for overall volume control
         let envelope = null; // Tone.AmplitudeEnvelope for smooth attack/release
         let contextStarted = false; // To track if Tone.context.start() has been called
@@ -595,6 +643,7 @@
 
         // Preset variables
         let presets = []; // This will be the root array containing folders and/or presets
+        let activePresetId = null; // To keep track of the currently active preset (only one can be active)
 
         // Get canvas and context
         const canvas = document.getElementById('soundCanvas');
@@ -633,6 +682,8 @@
         const presetsList = document.getElementById('presetsList');
         const presetsColumn = document.getElementById('presetsColumn'); // Get the presets column element
         const presetsToggle = document.getElementById('presetsToggle'); // Get the toggle header
+        const mainAppContent = document.getElementById('mainAppContent'); // Get main app content for padding (not used for padding anymore)
+        const activePresetTag = document.getElementById('activePresetTag'); // Get the active preset tag element
 
         // Constants for mapping
         const MIN_FREQ = 15;
@@ -828,7 +879,6 @@
             const volumeNormalized_logarithmic = Math.pow(volumeNormalized_linear, LOG_VOLUME_POWER_FACTOR);
 
             // Map normalized 0-1 (logarithmic) to dB range MIN_VOLUME_DB to MAX_VOLUME_DB
-            // Ensure volumeDB is not -Infinity if volumeNormalized_logarithmic is 0 (prevents Tone.dbToGain errors)
             const volumeDB = (volumeNormalized_logarithmic > 0) ? 
                              (MIN_VOLUME_DB + volumeNormalized_logarithmic * (MAX_VOLUME_DB - MIN_VOLUME_DB)) : 
                              -Infinity;
@@ -920,8 +970,6 @@
             // Trigger the envelope's attack
             envelope.triggerAttack();
             console.log("Sound interaction started, envelope attack triggered.");
-
-            // Manual interaction does NOT deselect presets
         }
 
         /**
@@ -942,6 +990,7 @@
 
         /**
          * Triggers a frequency sweep from SWEEP_START_FREQ to SWEEP_END_FREQ over a given duration.
+         * This sweep uses the main oscillator.
          * @param {number} duration - The duration of the sweep in seconds.
          */
         function triggerSweep(duration) {
@@ -974,38 +1023,40 @@
 
         /**
          * Updates harmonics count when the slider is moved.
+         * Applies to the main oscillator.
          */
         function updateHarmonicsCountFromSlider() {
             currentHarmonicsCount = parseInt(harmonicsCountSlider.value);
             harmonicsCountDisplay.textContent = currentHarmonicsCount; // Update the LCD display
+            const newPartials = calculatePartials(currentHarmonicsCount, currentHarmonicDecayPercentage, currentHarmonicIntervalFactor);
             if (oscillator) {
-                // Smoothly update partials (harmonics) with new count, current decay, and interval factor
-                oscillator.set({ partials: calculatePartials(currentHarmonicsCount, currentHarmonicDecayPercentage, currentHarmonicIntervalFactor) });
+                oscillator.set({ partials: newPartials });
             }
-            // The animation loop will handle redrawing the canvas.
         }
 
         /**
          * Updates harmonic decay when the slider is moved.
+         * Applies to the main oscillator.
          */
         function updateHarmonicDecayFromSlider() {
             currentHarmonicDecayPercentage = parseInt(harmonicDecaySlider.value);
             harmonicDecayDisplay.textContent = currentHarmonicDecayPercentage; // Update the LCD display
+            const newPartials = calculatePartials(currentHarmonicsCount, currentHarmonicDecayPercentage, currentHarmonicIntervalFactor);
             if (oscillator) {
-                // Smoothly update partials (harmonics) with current count, new decay, and interval factor
-                oscillator.set({ partials: calculatePartials(currentHarmonicsCount, currentHarmonicDecayPercentage, currentHarmonicIntervalFactor) });
+                oscillator.set({ partials: newPartials });
             }
         }
 
         /**
          * Updates harmonic interval factor when the slider is moved.
+         * Applies to the main oscillator.
          */
         function updateHarmonicIntervalFactorFromSlider() {
             currentHarmonicIntervalFactor = parseFloat(harmonicIntervalFactorSlider.value);
             harmonicIntervalFactorDisplay.textContent = currentHarmonicIntervalFactor.toFixed(2); // Update the LCD display
+            const newPartials = calculatePartials(currentHarmonicsCount, currentHarmonicDecayPercentage, currentHarmonicIntervalFactor);
             if (oscillator) {
-                // Smoothly update partials (harmonics) with current count, decay, and new interval factor
-                oscillator.set({ partials: calculatePartials(currentHarmonicsCount, currentHarmonicDecayPercentage, currentHarmonicIntervalFactor) });
+                oscillator.set({ partials: newPartials });
             }
         }
 
@@ -1187,12 +1238,24 @@
          */
         function deleteItem(id, itemsArray) {
             const initialLength = itemsArray.length;
+            const itemToDelete = findItemById(id, itemsArray); // Find the item to potentially stop its sound
+
             const newItemsArray = itemsArray.filter(item => item.id !== id);
             
             if (newItemsArray.length < initialLength) {
                 // Item was found and removed at this level
                 itemsArray.splice(0, itemsArray.length, ...newItemsArray);
                 savePresetsToLocalStorage(); // Save change
+                renderPresets(); // Re-render to update UI after deletion
+
+                // If the deleted item was the active preset, deactivate it and stop sound
+                if (itemToDelete && itemToDelete.type === 'preset' && itemToDelete.id === activePresetId) {
+                    activePresetId = null; // No preset is active now
+                    activePresetTag.style.display = 'none'; // Hide the tag
+                    if (oscillator && envelope) {
+                        envelope.triggerRelease(); // Stop the sound
+                    }
+                }
                 return true;
             }
 
@@ -1290,15 +1353,59 @@
 
         /**
          * Toggles the active state of a preset.
+         * Only one preset can be active at a time.
          * @param {string} id - The ID of the preset to toggle.
          */
         function togglePresetActiveState(id) {
-            const preset = findItemById(id, presets);
-            if (preset && preset.type === 'preset') {
-                preset.isActive = !preset.isActive; // Toggle the active state
-                savePresetsToLocalStorage(); // Save change
-                renderPresets(); // Re-render to update UI and canvas lines
+            let selectedPreset = null;
+
+            // Deactivate all presets first and find the one to activate
+            function processPresets(items) {
+                for (const item of items) {
+                    if (item.type === 'preset') {
+                        if (item.id === id) {
+                            item.isActive = !item.isActive; // Toggle the clicked preset's state
+                            if (item.isActive) {
+                                selectedPreset = item; // This is the one we want to activate
+                            }
+                        } else {
+                            item.isActive = false; // Deactivate all other presets
+                        }
+                    } else if (item.type === 'folder' && item.children) {
+                        processPresets(item.children);
+                    }
+                }
             }
+            processPresets(presets);
+
+            // Update sound and tag based on the selected preset
+            if (oscillator && envelope) {
+                if (selectedPreset && selectedPreset.isActive) {
+                    oscillator.frequency.setTargetAtTime(selectedPreset.frequency, Tone.context.currentTime, GLIDE_TIME);
+                    envelope.triggerAttack(); // Ensure sound is on
+                    activePresetId = selectedPreset.id; // Set the active preset ID
+
+                    // Update and show the tag
+                    const tagX = mapFrequencyToX(selectedPreset.frequency);
+                    activePresetTag.style.left = `${tagX}px`;
+                    activePresetTag.style.setProperty('--preset-color', selectedPreset.color);
+                    activePresetTag.innerHTML = `${selectedPreset.label}<br>${selectedPreset.frequency} Hz`;
+                    activePresetTag.style.display = 'block';
+
+                    // Position the tag just above the canvas
+                    const canvasRect = canvas.getBoundingClientRect();
+                    const mainAppContentRect = mainAppContent.getBoundingClientRect();
+                    activePresetTag.style.top = `${(canvasRect.top - mainAppContentRect.top) - activePresetTag.offsetHeight - 5}px`;
+
+                } else {
+                    envelope.triggerRelease(); // Stop the sound
+                    activePresetId = null; // No preset is active
+                    activePresetTag.style.display = 'none'; // Hide the tag
+                }
+            }
+
+            savePresetsToLocalStorage(); // Save change
+            renderPresets(); // Re-render to update UI and canvas lines
         }
 
         /**
@@ -1307,8 +1414,10 @@
         function togglePresetsColumn() {
             isPresetsColumnCollapsed = !isPresetsColumnCollapsed;
             presetsColumn.classList.toggle('collapsed', isPresetsColumnCollapsed);
+            // No need to adjust mainAppContent padding anymore, as presetsColumn is pushing
             localStorage.setItem('lowflowPresetsColumnCollapsed', isPresetsColumnCollapsed);
-            drawCanvas(); // Redraw canvas to ensure lines are updated if layout changes
+            // Re-trigger resize to ensure canvas positioning is correct if layout changes
+            window.dispatchEvent(new Event('resize')); 
         }
 
         // --- Animation Loop for Circle Inertia and Sound Updates ---
@@ -1412,8 +1521,7 @@
         sustainButton.addEventListener('click', () => {
             isSustainEnabled = !isSustainEnabled; // Toggle sustain state
             sustainButton.classList.toggle('active', isSustainEnabled); // Toggle 'active' class
-            if (!isSustainEnabled && envelope) {
-                // If sustain is turned off while a sound is playing, trigger release
+            if (!isSustainEnabled && envelope) { // Only trigger release for the main oscillator
                 envelope.triggerRelease();
             } else if (isSustainEnabled && !isDragging && envelope && Tone.context.state === 'running') {
                 // If sustain is turned on, and no current drag, set circle to center and show it
@@ -1467,6 +1575,18 @@
             circleY = Math.max(CIRCLE_RADIUS, Math.min(rect.height - CIRCLE_RADIUS, circleY));
             
             drawCanvas(); // Redraw control canvas content
+
+            // Re-position active preset tag on resize
+            if (activePresetId) {
+                const activePreset = findItemById(activePresetId, presets);
+                if (activePreset) {
+                    const tagX = mapFrequencyToX(activePreset.frequency);
+                    activePresetTag.style.left = `${tagX}px`;
+                    const canvasRect = canvas.getBoundingClientRect();
+                    const mainAppContentRect = mainAppContent.getBoundingClientRect();
+                    activePresetTag.style.top = `${(canvasRect.top - mainAppContentRect.top) - activePresetTag.offsetHeight - 5}px`;
+                }
+            }
         });
 
         // Trigger resize event once to set initial canvas dimensions based on CSS
