@@ -1497,7 +1497,7 @@
             } else if ((e.type === 'mousemove' || e.type === 'touchmove') && isDragging) {
                 // Always update target position based on current cursor/touch, even if out of canvas
                 updateTargetPosition(x, y);
-            } else if (e.type === 'mouseup' || e.type === 'touchend' || e.type === 'touchcancel') {
+            } else if (e.type === 'mouseup') { // Only mouseup on canvas
                 // Only stop sound if was previously dragging and interaction ends
                 if (isDragging) { 
                     isDragging = false;
@@ -1515,8 +1515,20 @@
 
         canvas.addEventListener('touchstart', handleCanvasEvent, { passive: false });
         canvas.addEventListener('touchmove', handleCanvasEvent, { passive: false });
-        canvas.addEventListener('touchend', handleCanvasEvent);
-        canvas.addEventListener('touchcancel', handleCanvasEvent);
+        // Moved touchend and touchcancel to document.body for better reliability on mobile
+        document.body.addEventListener('touchend', (e) => {
+            if (isDragging) {
+                isDragging = false;
+                stopSoundInteraction();
+            }
+        });
+        document.body.addEventListener('touchcancel', (e) => {
+            if (isDragging) {
+                isDragging = false;
+                stopSoundInteraction();
+            }
+        });
+
 
         // Event listener for the harmonics count slider
         harmonicsCountSlider.addEventListener('input', updateHarmonicsCountFromSlider);
