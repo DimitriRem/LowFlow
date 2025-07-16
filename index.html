@@ -46,7 +46,6 @@
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
             width: 100%; /* Take full width */
             max-width: 1280px; /* Increased max-width for wider design */
-            /* Removed position: relative as presets column no longer floats absolutely */
         }
 
         @media (min-width: 1024px) { /* Three columns on large screens */
@@ -71,7 +70,6 @@
                 flex-basis: auto; /* Allow to shrink/grow */
                 width: 100%; /* Ensure it takes full width */
                 margin-left: 0; /* Reset margin as flex-gap handles it */
-                /* No padding-right needed here, as presets-column pushes it */
             }
         }
         
@@ -521,7 +519,6 @@
             text-align: center;
             white-space: nowrap;
             z-index: 50; /* Ensure it's above other elements but below overlay */
-            display: none; /* Hidden by default */
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
             transition: left 0.05s ease-out; /* Smooth movement */
         }
@@ -576,8 +573,7 @@
                 </div>
             </div>
             
-            <!-- Active Preset Tag -->
-            <div id="activePresetTag" class="active-preset-tag"></div>
+            <!-- Active Preset Tags will be dynamically added here by JavaScript -->
 
             <canvas id="soundCanvas" width="800" height="400"></canvas>
 
@@ -627,9 +623,10 @@
 
     <script>
         // Tone.js setup
-        let oscillator = null; // Single oscillator for all sound output (manual interaction and presets)
-        let gainNode = null; // Tone.Gain node for overall volume control
-        let envelope = null; // Tone.AmplitudeEnvelope for smooth attack/release
+        // Removed polySynth and polySynthGain as presets will not play sound
+        let interactionOscillator = null; // For the red circle interaction
+        let interactionEnvelope = null; // Envelope for interactionOscillator
+        let interactionGainNode = null; // Gain for interactionOscillator
         let contextStarted = false; // To track if Tone.context.start() has been called
         let isSustainEnabled = false; // State for sustain button
 
@@ -643,7 +640,6 @@
 
         // Preset variables
         let presets = []; // This will be the root array containing folders and/or presets
-        let activePresetId = null; // To keep track of the currently active preset (only one can be active)
 
         // Get canvas and context
         const canvas = document.getElementById('soundCanvas');
@@ -682,8 +678,7 @@
         const presetsList = document.getElementById('presetsList');
         const presetsColumn = document.getElementById('presetsColumn'); // Get the presets column element
         const presetsToggle = document.getElementById('presetsToggle'); // Get the toggle header
-        const mainAppContent = document.getElementById('mainAppContent'); // Get main app content for padding (not used for padding anymore)
-        const activePresetTag = document.getElementById('activePresetTag'); // Get the active preset tag element
+        const mainAppContent = document.getElementById('mainAppContent'); // Get main app content for tag positioning
 
         // Constants for mapping
         const MIN_FREQ = 15;
@@ -861,10 +856,10 @@
         }
 
         /**
-         * Updates the oscillator's frequency and volume based on the red circle's current position.
+         * Updates the interaction oscillator's frequency and volume based on the red circle's current position.
          * This function is called continuously by the animation loop.
          */
-        function updateSoundParameters() {
+        function updateInteractionSoundParameters() {
             // Use the actual (interpolated) circle position for sound parameters
             const freqX = circleX;
             const volY = circleY;
@@ -886,10 +881,10 @@
             // For display, show the linear normalized value (0-1)
             currentVolumeDisplay = volumeNormalized_linear.toFixed(2);
 
-            // Update oscillator using setTargetAtTime for smooth glides
-            if (oscillator && gainNode && envelope) { // Ensure all nodes are available
-                oscillator.frequency.setTargetAtTime(currentFrequency, Tone.context.currentTime, GLIDE_TIME);
-                gainNode.gain.setTargetAtTime(Tone.dbToGain(volumeDB), Tone.context.currentTime, GLIDE_TIME); 
+            // Update interaction oscillator using setTargetAtTime for smooth glides
+            if (interactionOscillator && interactionGainNode && interactionEnvelope) { // Ensure all nodes are available
+                interactionOscillator.frequency.setTargetAtTime(currentFrequency, Tone.context.currentTime, GLIDE_TIME);
+                interactionGainNode.gain.setTargetAtTime(Tone.dbToGain(volumeDB), Tone.context.currentTime, GLIDE_TIME); 
             }
 
             // Update display
@@ -899,7 +894,7 @@
 
 
         /**
-         * Initializes Tone.js context, oscillator, gain node, and envelope.
+         * Initializes Tone.js context, oscillators, gain nodes, and envelopes.
          * This is called once when the "Start Audio" button is clicked.
          */
         startAudioButton.addEventListener('click', async () => {
@@ -910,33 +905,28 @@
                     contextStarted = true;
                     console.log("Tone.js audio context state:", Tone.context.state);
 
-                    // Initialize oscillator
-                    oscillator = new Tone.Oscillator({
+                    // Removed PolySynth initialization as presets will not play sound
+
+                    // Initialize Interaction Oscillator for red circle
+                    interactionOscillator = new Tone.Oscillator({
                         type: "sine",
-                        frequency: currentFrequency, // Set initial frequency from last update or default
-                        partials: calculatePartials(currentHarmonicsCount, currentHarmonicDecayPercentage, currentHarmonicIntervalFactor), // Use initial slider values
+                        frequency: currentFrequency,
+                        partials: calculatePartials(currentHarmonicsCount, currentHarmonicDecayPercentage, currentHarmonicIntervalFactor),
                         volume: 0 // Set oscillator internal volume to 0dB (unity gain)
                     });
-
-                    // Initialize Amplitude Envelope
-                    envelope = new Tone.AmplitudeEnvelope({
+                    interactionEnvelope = new Tone.AmplitudeEnvelope({
                         attack: ENVELOPE_ATTACK,
-                        decay: 0.1, // Not heavily used for this continuous interaction, but good practice
-                        sustain: 1.0, // Sustain at full level while active
+                        decay: 0.1,
+                        sustain: 1.0,
                         release: ENVELOPE_RELEASE
                     });
+                    interactionGainNode = new Tone.Gain(Tone.dbToGain(-Infinity)); // Start gain at silent
+                    interactionOscillator.connect(interactionEnvelope);
+                    interactionEnvelope.connect(interactionGainNode);
+                    interactionGainNode.toDestination();
+                    interactionOscillator.start(); // Start the oscillator running in the background
 
-                    // Initialize Gain Node for overall volume control
-                    gainNode = new Tone.Gain(Tone.dbToGain(-Infinity)); // Start gain at silent
-
-                    // Connect oscillator -> envelope -> gainNode -> destination
-                    oscillator.connect(envelope);
-                    envelope.connect(gainNode);
-                    gainNode.toDestination();
-
-                    oscillator.start(); // Start the oscillator running in the background
-
-                    console.log("Oscillator, Envelope, and GainNode initialized."); 
+                    console.log("Tone.js instruments initialized."); 
                     audioStartOverlay.classList.add('hidden'); // Hide the overlay
 
                     // Start the animation loop for the circle and sound parameters
@@ -951,12 +941,12 @@
 
         /**
          * Handles the start of sound interaction (mousedown/touchstart).
-         * Triggers the envelope's attack and shows the circle.
+         * Triggers the interaction envelope's attack and shows the circle.
          * @param {number} x - The x-coordinate of the interaction.
          * @param {number} y - The y-coordinate of the interaction.
          */
         function startSoundInteraction(x, y) {
-            if (!contextStarted || !oscillator || !gainNode || !envelope) {
+            if (!contextStarted || !interactionOscillator || !interactionGainNode || !interactionEnvelope) {
                 console.warn("Audio not ready. Please click 'Start Audio' first.");
                 return;
             }
@@ -967,22 +957,22 @@
             circleX = targetCircleX; // Immediately set circle to target for initial click
             circleY = targetCircleY;
 
-            // Trigger the envelope's attack
-            envelope.triggerAttack();
-            console.log("Sound interaction started, envelope attack triggered.");
+            // Trigger the interaction envelope's attack
+            interactionEnvelope.triggerAttack();
+            console.log("Interaction sound started, envelope attack triggered.");
         }
 
         /**
          * Handles the end of sound interaction (mouseup/touchend/mouseleave/touchcancel).
-         * Fades out the volume of the persistent oscillator or sustains if button is not active, hides the circle.
+         * Fades out the volume of the interaction oscillator, hides the circle.
          */
         function stopSoundInteraction() {
-            // Only trigger release if the sustain is NOT enabled
-            if (envelope && !isSustainEnabled) { 
-                envelope.triggerRelease();
-                console.log("Sound interaction stopped, envelope release triggered.");
+            // Only trigger release if the sustain is NOT enabled for the interaction oscillator
+            if (interactionEnvelope && !isSustainEnabled) { 
+                interactionEnvelope.triggerRelease();
+                console.log("Interaction sound stopped, envelope release triggered.");
             } else if (isSustainEnabled) {
-                console.log("Sustain is active. Sound will continue playing.");
+                console.log("Sustain is active for interaction. Sound will continue playing.");
             }
             showCircle = false; // Hide the circle
             // The animation loop will handle redrawing the canvas without the circle.
@@ -990,28 +980,28 @@
 
         /**
          * Triggers a frequency sweep from SWEEP_START_FREQ to SWEEP_END_FREQ over a given duration.
-         * This sweep uses the main oscillator.
+         * This sweep uses the interaction oscillator.
          * @param {number} duration - The duration of the sweep in seconds.
          */
         function triggerSweep(duration) {
-            if (!contextStarted || !oscillator || !gainNode || !envelope) {
+            if (!contextStarted || !interactionOscillator || !interactionGainNode || !interactionEnvelope) {
                 console.warn("Audio not ready. Please click 'Start Audio' first.");
                 return;
             }
 
-            // Trigger envelope attack for the sweep
-            envelope.triggerAttack();
+            // Trigger interaction envelope attack for the sweep
+            interactionEnvelope.triggerAttack();
 
             // Set initial frequency and then ramp to end frequency
-            oscillator.frequency.setValueAtTime(SWEEP_START_FREQ, Tone.context.currentTime); // Set start freq immediately
-            oscillator.frequency.linearRampToValueAtTime(SWEEP_END_FREQ, Tone.context.currentTime + duration);
+            interactionOscillator.frequency.setValueAtTime(SWEEP_START_FREQ, Tone.context.currentTime); // Set start freq immediately
+            interactionOscillator.frequency.linearRampToValueAtTime(SWEEP_END_FREQ, Tone.context.currentTime + duration);
 
             // Set gain for the sweep
-            gainNode.gain.setValueAtTime(Tone.dbToGain(SWEEP_VOLUME_DB), Tone.context.currentTime);
+            interactionGainNode.gain.setValueAtTime(Tone.dbToGain(SWEEP_VOLUME_DB), Tone.context.currentTime);
 
-            // Trigger envelope release after sweep if sustain is not enabled
+            // Trigger interaction envelope release after sweep if sustain is not enabled
             if (!isSustainEnabled) {
-                envelope.triggerRelease(Tone.context.currentTime + duration); // Release at the end of sweep
+                interactionEnvelope.triggerRelease(Tone.context.currentTime + duration); // Release at the end of sweep
             }
             
             // Update display at the end of the sweep
@@ -1023,41 +1013,44 @@
 
         /**
          * Updates harmonics count when the slider is moved.
-         * Applies to the main oscillator.
+         * Applies to the interactionOscillator.
          */
         function updateHarmonicsCountFromSlider() {
             currentHarmonicsCount = parseInt(harmonicsCountSlider.value);
             harmonicsCountDisplay.textContent = currentHarmonicsCount; // Update the LCD display
             const newPartials = calculatePartials(currentHarmonicsCount, currentHarmonicDecayPercentage, currentHarmonicIntervalFactor);
-            if (oscillator) {
-                oscillator.set({ partials: newPartials });
+            if (interactionOscillator) {
+                interactionOscillator.set({ partials: newPartials });
             }
+            // Removed polySynth update as presets will not play sound
         }
 
         /**
          * Updates harmonic decay when the slider is moved.
-         * Applies to the main oscillator.
+         * Applies to the interactionOscillator.
          */
         function updateHarmonicDecayFromSlider() {
             currentHarmonicDecayPercentage = parseInt(harmonicDecaySlider.value);
             harmonicDecayDisplay.textContent = currentHarmonicDecayPercentage; // Update the LCD display
             const newPartials = calculatePartials(currentHarmonicsCount, currentHarmonicDecayPercentage, currentHarmonicIntervalFactor);
-            if (oscillator) {
-                oscillator.set({ partials: newPartials });
+            if (interactionOscillator) {
+                interactionOscillator.set({ partials: newPartials });
             }
+            // Removed polySynth update as presets will not play sound
         }
 
         /**
          * Updates harmonic interval factor when the slider is moved.
-         * Applies to the main oscillator.
+         * Applies to the interactionOscillator.
          */
         function updateHarmonicIntervalFactorFromSlider() {
             currentHarmonicIntervalFactor = parseFloat(harmonicIntervalFactorSlider.value);
             harmonicIntervalFactorDisplay.textContent = currentHarmonicIntervalFactor.toFixed(2); // Update the LCD display
             const newPartials = calculatePartials(currentHarmonicsCount, currentHarmonicDecayPercentage, currentHarmonicIntervalFactor);
-            if (oscillator) {
-                oscillator.set({ partials: newPartials });
+            if (interactionOscillator) {
+                interactionOscillator.set({ partials: newPartials });
             }
+            // Removed polySynth update as presets will not play sound
         }
 
         /**
@@ -1081,7 +1074,13 @@
          * Saves current presets to localStorage.
          */
         function savePresetsToLocalStorage() {
-            localStorage.setItem('lowflowPresets', JSON.stringify(presets));
+            localStorage.setItem('lowflowPresets', JSON.stringify(presets, (key, value) => {
+                // Exclude tagElement from serialization
+                if (key === 'tagElement') {
+                    return undefined;
+                }
+                return value;
+            }));
             console.log("Presets saved to Local Storage.");
         }
 
@@ -1098,6 +1097,7 @@
                         items.forEach(item => {
                             if (item.type === 'preset') {
                                 if (typeof item.isActive === 'undefined') item.isActive = false;
+                                item.tagElement = null; // Ensure tagElement is null on load
                             } else if (item.type === 'folder' && item.children) {
                                 if (typeof item.expanded === 'undefined') item.expanded = true; // Default to expanded
                                 ensurePresetProps(item.children);
@@ -1116,14 +1116,14 @@
                 // Add some default presets and folders if none exist
                 presets = [
                     { id: crypto.randomUUID(), type: 'folder', name: 'My Instruments', expanded: true, children: [
-                        { id: crypto.randomUUID(), type: 'preset', label: 'Guitar Low E', frequency: 82.4, color: '#00FF00', isActive: false },
-                        { id: crypto.randomUUID(), type: 'preset', label: 'Bass Low B', frequency: 30.8, color: '#0000FF', isActive: false }
+                        { id: crypto.randomUUID(), type: 'preset', label: 'Guitar Low E', frequency: 82.4, color: '#00FF00', isActive: false, tagElement: null },
+                        { id: crypto.randomUUID(), type: 'preset', label: 'Bass Low B', frequency: 30.8, color: '#0000FF', isActive: false, tagElement: null }
                     ]},
                     { id: crypto.randomUUID(), type: 'folder', name: 'Standard 440Hz', expanded: false, children: [
-                        { id: crypto.randomUUID(), type: 'preset', label: 'A4', frequency: 440, color: '#FFFF00', isActive: false },
-                        { id: crypto.randomUUID(), type: 'preset', label: 'C5', frequency: 523.25, color: '#FF00FF', isActive: false }
+                        { id: crypto.randomUUID(), type: 'preset', label: 'A4', frequency: 440, color: '#FFFF00', isActive: false, tagElement: null },
+                        { id: crypto.randomUUID(), type: 'preset', label: 'C5', frequency: 523.25, color: '#FF00FF', isActive: false, tagElement: null }
                     ]},
-                    { id: crypto.randomUUID(), type: 'preset', label: 'Custom Test', frequency: 75, color: '#FFFFFF', isActive: false } // Root level preset
+                    { id: crypto.randomUUID(), type: 'preset', label: 'Custom Test', frequency: 75, color: '#FFFFFF', isActive: false, tagElement: null } // Root level preset
                 ];
                 savePresetsToLocalStorage(); // Save defaults to Local Storage
             }
@@ -1209,6 +1209,7 @@
                 }
             });
             drawCanvas(); // Redraw canvas to update preset lines
+            updateAllPresetTags(); // Update tags after rendering presets
         }
 
         /**
@@ -1238,7 +1239,7 @@
          */
         function deleteItem(id, itemsArray) {
             const initialLength = itemsArray.length;
-            const itemToDelete = findItemById(id, itemsArray); // Find the item to potentially stop its sound
+            const itemToDelete = findItemById(id, itemsArray); // Find the item to potentially remove its tag
 
             const newItemsArray = itemsArray.filter(item => item.id !== id);
             
@@ -1248,13 +1249,10 @@
                 savePresetsToLocalStorage(); // Save change
                 renderPresets(); // Re-render to update UI after deletion
 
-                // If the deleted item was the active preset, deactivate it and stop sound
-                if (itemToDelete && itemToDelete.type === 'preset' && itemToDelete.id === activePresetId) {
-                    activePresetId = null; // No preset is active now
-                    activePresetTag.style.display = 'none'; // Hide the tag
-                    if (oscillator && envelope) {
-                        envelope.triggerRelease(); // Stop the sound
-                    }
+                // If the deleted item was a preset and had a tag, remove its tag
+                if (itemToDelete && itemToDelete.type === 'preset' && itemToDelete.tagElement) {
+                    itemToDelete.tagElement.remove();
+                    itemToDelete.tagElement = null;
                 }
                 return true;
             }
@@ -1286,7 +1284,8 @@
                     label: label,
                     frequency: frequency,
                     color: color,
-                    isActive: false // New presets start as inactive
+                    isActive: false, // New presets start as inactive
+                    tagElement: null // Initialize tagElement as null
                 };
 
                 if (parentId === 'root') {
@@ -1352,60 +1351,79 @@
         }
 
         /**
+         * Updates the position and content of a preset's tag.
+         * @param {object} preset - The preset object.
+         */
+        function updatePresetTagPosition(preset) {
+            if (preset.tagElement) { // Check if tagElement exists
+                const tag = preset.tagElement;
+                const tagX = mapFrequencyToX(preset.frequency);
+                tag.style.left = `${tagX}px`;
+                tag.style.setProperty('--preset-color', preset.color);
+                tag.innerHTML = `${preset.label}<br>${preset.frequency} Hz`;
+
+                // Position the tag just above the canvas
+                const canvasRect = canvas.getBoundingClientRect();
+                const mainAppContentRect = mainAppContent.getBoundingClientRect();
+                tag.style.top = `${(canvasRect.top - mainAppContentRect.top) - tag.offsetHeight - 5}px`;
+            }
+        }
+
+        /**
+         * Updates the position of all active preset tags.
+         */
+        function updateAllPresetTags() {
+            // Remove all existing tags first to prevent duplicates and ensure correct state
+            document.querySelectorAll('.active-preset-tag').forEach(tag => tag.remove());
+
+            // Re-create tags for currently active presets
+            function createAndPositionTags(items) {
+                items.forEach(item => {
+                    if (item.type === 'preset' && item.isActive) {
+                        const tag = document.createElement('div');
+                        tag.className = 'active-preset-tag';
+                        tag.dataset.presetId = item.id;
+                        mainAppContent.appendChild(tag);
+                        item.tagElement = tag; // Store reference
+                        updatePresetTagPosition(item);
+                    } else if (item.type === 'folder' && item.children) {
+                        createAndPositionTags(item.children);
+                    }
+                });
+            }
+            createAndPositionTags(presets);
+        }
+
+
+        /**
          * Toggles the active state of a preset.
-         * Only one preset can be active at a time.
          * @param {string} id - The ID of the preset to toggle.
          */
         function togglePresetActiveState(id) {
-            let selectedPreset = null;
+            const preset = findItemById(id, presets);
+            if (preset && preset.type === 'preset') {
+                preset.isActive = !preset.isActive; // Toggle the active state
 
-            // Deactivate all presets first and find the one to activate
-            function processPresets(items) {
-                for (const item of items) {
-                    if (item.type === 'preset') {
-                        if (item.id === id) {
-                            item.isActive = !item.isActive; // Toggle the clicked preset's state
-                            if (item.isActive) {
-                                selectedPreset = item; // This is the one we want to activate
-                            }
-                        } else {
-                            item.isActive = false; // Deactivate all other presets
-                        }
-                    } else if (item.type === 'folder' && item.children) {
-                        processPresets(item.children);
+                // No sound triggering for presets, only visual update
+                if (preset.isActive) {
+                    if (!preset.tagElement) { 
+                        const tag = document.createElement('div');
+                        tag.className = 'active-preset-tag';
+                        tag.dataset.presetId = preset.id; // Store ID for reference
+                        mainAppContent.appendChild(tag);
+                        preset.tagElement = tag; // Store reference to the element
+                    }
+                    updatePresetTagPosition(preset); // Set content and position
+                } else {
+                    // Remove tag
+                    if (preset.tagElement) {
+                        preset.tagElement.remove();
+                        preset.tagElement = null;
                     }
                 }
+                savePresetsToLocalStorage(); // Save change
+                renderPresets(); // Re-render to update UI (li classes) and canvas lines
             }
-            processPresets(presets);
-
-            // Update sound and tag based on the selected preset
-            if (oscillator && envelope) {
-                if (selectedPreset && selectedPreset.isActive) {
-                    oscillator.frequency.setTargetAtTime(selectedPreset.frequency, Tone.context.currentTime, GLIDE_TIME);
-                    envelope.triggerAttack(); // Ensure sound is on
-                    activePresetId = selectedPreset.id; // Set the active preset ID
-
-                    // Update and show the tag
-                    const tagX = mapFrequencyToX(selectedPreset.frequency);
-                    activePresetTag.style.left = `${tagX}px`;
-                    activePresetTag.style.setProperty('--preset-color', selectedPreset.color);
-                    activePresetTag.innerHTML = `${selectedPreset.label}<br>${selectedPreset.frequency} Hz`;
-                    activePresetTag.style.display = 'block';
-
-                    // Position the tag just above the canvas
-                    const canvasRect = canvas.getBoundingClientRect();
-                    const mainAppContentRect = mainAppContent.getBoundingClientRect();
-                    activePresetTag.style.top = `${(canvasRect.top - mainAppContentRect.top) - activePresetTag.offsetHeight - 5}px`;
-
-                } else {
-                    envelope.triggerRelease(); // Stop the sound
-                    activePresetId = null; // No preset is active
-                    activePresetTag.style.display = 'none'; // Hide the tag
-                }
-            }
-
-            savePresetsToLocalStorage(); // Save change
-            renderPresets(); // Re-render to update UI and canvas lines
         }
 
         /**
@@ -1414,9 +1432,8 @@
         function togglePresetsColumn() {
             isPresetsColumnCollapsed = !isPresetsColumnCollapsed;
             presetsColumn.classList.toggle('collapsed', isPresetsColumnCollapsed);
-            // No need to adjust mainAppContent padding anymore, as presetsColumn is pushing
             localStorage.setItem('lowflowPresetsColumnCollapsed', isPresetsColumnCollapsed);
-            // Re-trigger resize to ensure canvas positioning is correct if layout changes
+            // Re-trigger resize to ensure canvas and tag positioning is correct if layout changes
             window.dispatchEvent(new Event('resize')); 
         }
 
@@ -1434,7 +1451,7 @@
             // Update sound parameters based on the actual (interpolated) circle position
             // This is done continuously as long as the audio context is started
             if (contextStarted) {
-                updateSoundParameters();
+                updateInteractionSoundParameters();
             }
 
             // Redraw canvas with the updated circle position and preset line
@@ -1521,16 +1538,16 @@
         sustainButton.addEventListener('click', () => {
             isSustainEnabled = !isSustainEnabled; // Toggle sustain state
             sustainButton.classList.toggle('active', isSustainEnabled); // Toggle 'active' class
-            if (!isSustainEnabled && envelope) { // Only trigger release for the main oscillator
-                envelope.triggerRelease();
-            } else if (isSustainEnabled && !isDragging && envelope && Tone.context.state === 'running') {
+            if (!isSustainEnabled && interactionEnvelope) { // Only trigger release for the interaction oscillator
+                interactionEnvelope.triggerRelease();
+            } else if (isSustainEnabled && !isDragging && interactionEnvelope && Tone.context.state === 'running') {
                 // If sustain is turned on, and no current drag, set circle to center and show it
                 circleX = canvas.width / 2;
                 circleY = canvas.height / 2;
                 targetCircleX = circleX;
                 targetCircleY = circleY;
                 showCircle = true;
-            } else if (!isSustainEnabled && !isDragging && envelope) {
+            } else if (!isSustainEnabled && !isDragging && interactionEnvelope) {
                  // If sustain is turned OFF and not dragging, hide circle
                  showCircle = false;
             }
@@ -1568,7 +1585,6 @@
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // Reset and apply scale
 
             // Re-clamp targetCircleX/Y and circleX/Y to new CSS canvas bounds
-            // Note: These coordinates are still in CSS pixels, as the scaling is handled by ctx.scale
             targetCircleX = Math.max(CIRCLE_RADIUS, Math.min(rect.width - CIRCLE_RADIUS, targetCircleX));
             targetCircleY = Math.max(CIRCLE_RADIUS, Math.min(rect.height - CIRCLE_RADIUS, circleY));
             circleX = Math.max(CIRCLE_RADIUS, Math.min(rect.width - CIRCLE_RADIUS, circleX));
@@ -1576,17 +1592,17 @@
             
             drawCanvas(); // Redraw control canvas content
 
-            // Re-position active preset tag on resize
-            if (activePresetId) {
-                const activePreset = findItemById(activePresetId, presets);
-                if (activePreset) {
-                    const tagX = mapFrequencyToX(activePreset.frequency);
-                    activePresetTag.style.left = `${tagX}px`;
-                    const canvasRect = canvas.getBoundingClientRect();
-                    const mainAppContentRect = mainAppContent.getBoundingClientRect();
-                    activePresetTag.style.top = `${(canvasRect.top - mainAppContentRect.top) - activePresetTag.offsetHeight - 5}px`;
-                }
+            // Re-position all active preset tags on resize
+            function repositionTagsRecursive(items) {
+                items.forEach(item => {
+                    if (item.type === 'preset' && item.isActive && item.tagElement) {
+                        updatePresetTagPosition(item); // Update position for active tags
+                    } else if (item.type === 'folder' && item.children) {
+                        repositionTagsRecursive(item.children);
+                    }
+                });
             }
+            repositionTagsRecursive(presets);
         });
 
         // Trigger resize event once to set initial canvas dimensions based on CSS
