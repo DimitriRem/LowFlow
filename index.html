@@ -1,0 +1,1486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LowFlow</title>
+    <!-- Google Fonts - Teko and VT323 -->
+    <link href="https://fonts.googleapis.com/css2?family=Teko:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        // Updated to Teko, with sans-serif as a fallback
+                        inter: ['Teko', 'sans-serif'], 
+                    },
+                },
+            },
+        };
+    </script>
+    <!-- Tone.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+    <style>
+        body {
+            font-family: 'Teko', sans-serif; /* Applied Teko font */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #111111; /* Dark background */
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            display: flex;
+            flex-direction: column; /* Default to column on small screens */
+            align-items: center;
+            gap: 20px;
+            background: linear-gradient(to bottom, #000000, #333333);
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            width: 100%; /* Take full width */
+            max-width: 1280px; /* Increased max-width for wider design */
+        }
+
+        @media (min-width: 1024px) { /* Three columns on large screens */
+            .container {
+                flex-direction: row;
+                justify-content: flex-start; /* Align to start, let flex-grow handle space */
+                align-items: flex-start;
+            }
+            .presets-column {
+                flex-basis: 25%; /* Allocate width for presets */
+                margin-right: 20px;
+            }
+            .main-app-content {
+                flex-grow: 1; /* Take remaining space */
+                flex-basis: auto; /* Allow to shrink/grow */
+                margin-left: 0; /* Reset margin as flex-gap handles it */
+            }
+        }
+        
+        .presets-column {
+            width: 100%; /* Full width on small screens */
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            background-color: #1a1a1a;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid;
+            border-color: #292929 #292929 #716a6a #716a6a;
+            transition: width 0.3s ease-in-out, flex-basis 0.3s ease-in-out; /* Add transition for width and flex-basis */
+            flex-shrink: 0; /* Prevent shrinking below basis initially */
+            overflow: hidden; /* Hide content when collapsed */
+        }
+
+        .presets-column.collapsed {
+            flex-basis: 50px; /* Collapsed width */
+            width: 50px; /* Ensure width is applied */
+            padding-left: 10px; /* Smaller padding when collapsed */
+            padding-right: 10px;
+        }
+
+        .presets-column.collapsed .preset-input-group,
+        .presets-column.collapsed .presets-list {
+            display: none; /* Hide content */
+        }
+
+        .presets-column h2 {
+            color: #ffffff;
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .presets-column #presetsToggle {
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between; /* Space out title and icon */
+            align-items: center;
+            padding-bottom: 10px; /* Space from content */
+            white-space: nowrap; /* Prevent wrapping of title */
+        }
+        .presets-column.collapsed #presetsToggle {
+            justify-content: center; /* Center the icon when collapsed */
+        }
+
+        .presets-column #presetsTitleText {
+            margin-right: 10px; /* Space between text and icon */
+        }
+        .presets-column.collapsed #presetsTitleText {
+            display: none; /* Hide text when collapsed */
+        }
+
+        .presets-column #toggleIcon {
+            font-size: 0.8em;
+            transition: transform 0.2s ease;
+        }
+        .presets-column.collapsed #toggleIcon {
+            transform: rotate(-90deg); /* Rotate arrow when collapsed */
+        }
+
+
+        .preset-input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .preset-input-group input[type="text"],
+        .preset-input-group input[type="number"],
+        .preset-input-group select {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #555;
+            background-color: #222;
+            color: #eee;
+            font-family: 'Teko', sans-serif;
+            font-size: 1rem;
+        }
+        .preset-input-group input[type="text"]::placeholder,
+        .preset-input-group input[type="number"]::placeholder {
+            color: #999;
+        }
+        .preset-input-group input[type="color"] {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 30px;
+            background-color: transparent;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            border-radius: 6px;
+            overflow: hidden; /* Hide default color picker border */
+        }
+        .preset-input-group input[type="color"]::-webkit-color-swatch {
+            border-radius: 6px;
+            border: 1px solid #555;
+        }
+        .preset-input-group input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+        .preset-input-group input[type="color"]::-moz-color-swatch {
+            border-radius: 6px;
+            border: 1px solid #555;
+        }
+        .preset-input-group input[type="color"]::-moz-color-swatch-wrapper {
+            padding: 0;
+        }
+
+
+        .preset-input-group button {
+            background: linear-gradient(to bottom, #444444, #111111);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 8px;
+            border: 1px solid;
+            border-color: #555 #555 #888 #888;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s ease;
+        }
+        .preset-input-group button:hover {
+            background: linear-gradient(to bottom, #555555, #222222);
+        }
+
+        .presets-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .preset-item, .folder-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #2a2a2a;
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            color: #eee;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+        }
+        .preset-item:hover, .folder-item:hover {
+            background-color: #3a3a3a;
+            border-color: #666;
+        }
+        /* Active preset item styling */
+        .preset-item.active {
+            /* Background and border color set dynamically by JS */
+            color: white; /* Ensure text is white on colored background */
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.3); /* Subtle glow */
+        }
+        .preset-item.active .preset-label,
+        .preset-item.active .preset-freq {
+            color: white; /* Ensure text is white on colored background */
+        }
+
+
+        .folder-item {
+            font-weight: bold;
+            background-color: #3a3a3a; /* Darker background for folders */
+            border-color: #666;
+            margin-bottom: 5px;
+            position: relative; /* For arrow icon positioning */
+        }
+        .folder-item .folder-toggle-icon {
+            margin-left: 10px;
+            font-size: 0.8em;
+            transition: transform 0.2s ease;
+        }
+        .folder-item.collapsed .folder-toggle-icon {
+            transform: rotate(-90deg);
+        }
+        .folder-item.expanded .folder-toggle-icon {
+            transform: rotate(0deg);
+        }
+
+        .folder-content {
+            list-style: none;
+            padding-left: 20px; /* Indent folder contents */
+            margin-top: 5px;
+            display: none; /* Hidden by default */
+        }
+        .folder-item.expanded + .folder-content {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .preset-item button, .folder-item button {
+            background-color: #dc2626; /* Red for delete */
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background-color 0.2s ease;
+            margin-left: 10px; /* Space from label/freq */
+        }
+        .preset-item button:hover, .folder-item button:hover {
+            background-color: #ef4444;
+        }
+
+        .preset-label {
+            flex-grow: 1;
+            margin-right: 10px;
+        }
+        .preset-freq {
+            font-family: 'VT323', monospace;
+            color: #ff0000; /* Red for freq display */
+            font-size: 1.2em;
+        }
+
+        .main-app-content {
+            width: 100%; /* Full width on small screens */
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .header-and-info-row {
+            display: flex;
+            justify-content: space-between; /* Pushes h1 left, freq/vol right */
+            align-items: center;
+            width: 100%;
+            margin-bottom: 10px; /* Space below this row */
+            background-color: #111111; /* Dark background for the header bar */
+            padding: 10px;
+            border-radius: 10px; /* Rounded corners for the header bar */
+        }
+
+        .frequency-volume-group {
+            display: flex;
+            gap: 20px; /* Space between Frequency and Volume displays */
+            align-items: center;
+        }
+
+        .frequency-volume-group p {
+            margin: 0; /* Remove default paragraph margins */
+            white-space: nowrap; /* Prevent wrapping for "Frequency: X Hz" */
+            color: #ffffff; /* Ensure labels are white */
+        }
+
+        canvas {
+            border: 3px solid; /* Border for canvas */
+            border-color: #292929 #292929 #716a6a #716a6a;
+            border-radius: 12px; /* Rounded corners for canvas */
+            cursor: crosshair;
+            background: linear-gradient(to bottom, #000000, #333333);
+            touch-action: none; /* Prevent default touch actions like scrolling */
+            width: 100%; /* Make canvas fill container width */
+            height: auto; /* Maintain aspect ratio */
+            aspect-ratio: 2 / 0.5; /* Landscape aspect ratio */
+        }
+        
+        .slider-container {
+            width: 100%;
+            padding: 10px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+        /* Style for slider labels */
+        .slider-container label {
+            color: #ffffff; /* White text for slider labels */
+        }
+        input[type="range"] {
+            width: 80%;
+            height: 8px;
+            background: #000; /* Dark track */
+            border-radius: 5px;
+            border: 1px solid;
+            border-color: #292929 #292929 #716a6a #716a6a;            
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none;
+            cursor: pointer;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #ffffff; /* White thumb */
+            border-radius: 50%;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            transition: background 0.3s ease, box-shadow 0.3s ease;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            background: #c00; /* Red on hover */
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #8b5cf6; /* Fallback purple */
+            border-radius: 50%;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            transition: background 0.3s ease, box-shadow 0.3s ease;
+        }
+        input[type="range"]::-moz-range-thumb:hover {
+            background: #c00; /* Red on hover */
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        #audioStartOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            border-radius: 20px; /* Match container border radius */
+            transition: opacity 0.3s ease-in-out;
+            opacity: 1;
+            visibility: visible;
+        }
+        #audioStartOverlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none; /* Disable interaction when hidden */
+        }
+        #startAudioButton {
+            padding: 15px 30px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            background-color: #600; /* Red button */
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            transition: background-color 0.3s ease, transform 0.2s ease;
+        }
+        #startAudioButton:hover {
+            background-color: #f00; /* Darker red on hover */
+            transform: translateY(-2px);
+        }
+        #startAudioButton:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        
+        /* Styles for control buttons (Sustain, Custom Sweep) */
+        .control-button {
+            padding: 10px 15px;
+            font-size: 1.1rem; /* Slightly larger font */
+            font-weight: bold;
+            background: linear-gradient(to bottom, #333333, #000000); /* Dark gradient */
+            color: white;
+            border: 1px solid;
+            border-color: #555 #555 #888 #888; /* Subtle border for depth */
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+            transition: background 0.3s ease, transform 0.2s ease, border-color 0.3s ease;
+            flex-grow: 1;
+            min-width: 120px;
+        }
+        .control-button:hover {
+            background: linear-gradient(to bottom, #444444, #111111); /* Slightly lighter on hover */
+            transform: translateY(-1px);
+        }
+        .control-button:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 5px rgba(0, 0, 0, 0.2);
+        }
+        .control-button.active { /* For sustain enabled */
+            background: linear-gradient(to bottom, #ff4444, #cc0000); /* Red gradient */
+            border-color: #ff0000 #cc0000 #990000 #990000;
+            box-shadow: 0 5px 15px rgba(255, 0, 0, 0.4);
+        }
+        .control-button.active:hover {
+            background: linear-gradient(to bottom, #ff6666, #dd2222); /* Lighter red on hover */
+        }
+
+        /* LCD Display Style */
+        .lcd-display {
+            background: linear-gradient(to bottom, #333333, #000000);
+            color: #ff0000; /* Red digits for VT323 */
+            font-family: 'VT323', monospace; /* VT323 font */
+            font-size: 1.5em; /* Slightly larger font for VT323 */
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid;
+            border-color: #333 #333 #aaa #aaa;
+            min-width: 40px; /* Ensure enough space for digits */
+            text-align: center;
+            display: inline-block; /* Allow it to sit next to label */
+            margin-left: 10px; /* Space from label */
+        }
+
+        /* Two-column layout for controls */
+        .controls-two-column-layout {
+            display: flex;
+            flex-direction: column; /* Default to column on small screens */
+            gap: 20px;
+            width: 100%;
+            margin-top: 20px; /* Space above controls */
+        }
+        @media (min-width: 768px) {
+            .controls-two-column-layout {
+                flex-direction: row; /* Two columns on medium screens and up */
+                justify-content: space-between;
+                align-items: flex-start;
+            }
+            .left-column, .right-column {
+                width: 48%; /* Distribute width */
+                display: flex; /* Make content inside columns flex for vertical stacking */
+                flex-direction: column;
+                gap: 20px;
+            }
+        }
+    </style>
+</head>
+<body class="selection:bg-purple-200">
+    <div class="container relative">
+        <!-- Presets Column -->
+        <div class="presets-column" id="presetsColumn">
+            <h2 id="presetsToggle">
+                <span id="presetsTitleText">Frequency Presets</span> 
+                <span id="toggleIcon" class="folder-toggle-icon">&#9660;</span>
+            </h2>
+            <div class="preset-input-group">
+                <input type="text" id="newPresetLabel" placeholder="Preset Label">
+                <input type="number" id="newPresetFrequency" placeholder="Frequency (Hz)" min="15" max="100" step="1">
+                <input type="color" id="newPresetColor" value="#ff0000"> <!-- Default red -->
+                <select id="parentFolderSelect">
+                    <option value="root">Root Folder</option>
+                    <!-- Folder options will be dynamically added here -->
+                </select>
+                <button id="addPresetButton">Add Preset</button>
+            </div>
+            <div class="preset-input-group">
+                <input type="text" id="newFolderName" placeholder="New Folder Name">
+                <button id="addFolderButton">Add Folder</button>
+            </div>
+            <ul id="presetsList" class="presets-list">
+                <!-- Presets and folders will be rendered here by JavaScript -->
+            </ul>
+        </div>
+
+        <div class="main-app-content">
+            <div class="header-and-info-row">
+                <h1 class="text-3xl font-bold text-white">LowFlow</h1>
+                <div class="frequency-volume-group">
+                    <p>Frequency: <span id="frequencyDisplay" class="lcd-display">0</span> Hz</p>
+                    <p>Volume: <span id="volumeDisplay" class="lcd-display">0</span></p>
+                </div>
+            </div>
+            
+            <canvas id="soundCanvas" width="800" height="400"></canvas>
+
+            <div class="controls-two-column-layout">
+                <div class="left-column">
+                    <div class="slider-container">
+                        <label for="harmonicsCountSlider" class="text-lg">Harmonics (Count): <span id="harmonicsCountDisplay" class="lcd-display">0</span></label>
+                        <input type="range" id="harmonicsCountSlider" min="0" max="12" value="5" step="1">
+                    </div>
+                    
+                    <div class="slider-container">
+                        <label for="harmonicDecaySlider" class="text-lg">Harmonic Decay (%): <span id="harmonicDecayDisplay" class="lcd-display">0</span></label>
+                        <input type="range" id="harmonicDecaySlider" min="0" max="100" value="50" step="1">
+                    </div>
+
+                    <div class="slider-container">
+                        <label for="harmonicIntervalFactorSlider" class="text-lg">Harmonic Interval Factor: <span id="harmonicIntervalFactorDisplay" class="lcd-display">0.00</span></label>
+                        <input type="range" id="harmonicIntervalFactorSlider" min="0.1" max="3.0" value="1.0" step="0.01">
+                    </div>
+                </div>
+
+                <div class="right-column">
+                    <!-- Sustain Button -->
+                    <button id="sustainButton" class="control-button">Sustain</button>
+
+                    <!-- Custom Sweep Control -->
+                    <div class="slider-container">
+                        <label for="customSweepDurationSlider" class="text-lg">Custom Sweep Duration: <span id="customSweepDurationDisplay" class="lcd-display">0.5</span>s</label>
+                        <input type="range" id="customSweepDurationSlider" min="0.5" max="5.0" value="0.5" step="0.5">
+                        <button class="control-button" id="customSweepButton">Custom Sweep</button>
+                    </div>
+
+                    <!-- New Inertia Control -->
+                    <div class="slider-container">
+                        <label for="inertiaSlider" class="text-lg">Inertia: <span id="inertiaDisplay" class="lcd-display">0.50</span></label>
+                        <input type="range" id="inertiaSlider" min="0.0" max="0.99" value="0.5" step="0.01">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Overlay for audio start -->
+        <div id="audioStartOverlay">
+            <button id="startAudioButton">Start Audio</button>
+        </div>
+    </div>
+
+    <script>
+        // Tone.js setup
+        let oscillator = null;
+        let gainNode = null; // Tone.Gain node for overall volume control
+        let envelope = null; // Tone.AmplitudeEnvelope for smooth attack/release
+        let contextStarted = false; // To track if Tone.context.start() has been called
+        let isSustainEnabled = false; // State for sustain button
+
+        // Canvas interaction variables for the circle
+        let circleX = 0;
+        let circleY = 0;
+        let targetCircleX = 0; // Target X for inertia
+        let targetCircleY = 0; // Target Y for inertia
+        let showCircle = false;
+        const CIRCLE_RADIUS = 10; // Radius of the red circle
+
+        // Preset variables
+        let presets = []; // This will be the root array containing folders and/or presets
+
+        // Get canvas and context
+        const canvas = document.getElementById('soundCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Get display elements
+        const frequencyDisplay = document.getElementById('frequencyDisplay');
+        const volumeDisplay = document.getElementById('volumeDisplay');
+        const harmonicsCountDisplay = document.getElementById('harmonicsCountDisplay'); 
+        const harmonicDecayDisplay = document.getElementById('harmonicDecayDisplay');
+        const harmonicIntervalFactorDisplay = document.getElementById('harmonicIntervalFactorDisplay');
+        const audioStartOverlay = document.getElementById('audioStartOverlay');
+        const startAudioButton = document.getElementById('startAudioButton');
+        const harmonicsCountSlider = document.getElementById('harmonicsCountSlider');
+        const harmonicDecaySlider = document.getElementById('harmonicDecaySlider'); 
+        const harmonicIntervalFactorSlider = document.getElementById('harmonicIntervalFactorSlider');
+        const sustainButton = document.getElementById('sustainButton'); // Get the new sustain button
+
+        const customSweepButton = document.getElementById('customSweepButton'); // Get custom sweep button
+        const customSweepDurationSlider = document.getElementById('customSweepDurationSlider'); // Get custom sweep duration slider
+        const customSweepDurationDisplay = document.getElementById('customSweepDurationDisplay'); // Get custom sweep duration display
+
+        // New Inertia Control elements
+        const inertiaSlider = document.getElementById('inertiaSlider');
+        const inertiaDisplay = document.getElementById('inertiaDisplay');
+        let inertiaFactor = parseFloat(inertiaSlider.value); // Initialize inertia factor
+
+        // Preset UI elements
+        const newPresetLabelInput = document.getElementById('newPresetLabel');
+        const newPresetFrequencyInput = document.getElementById('newPresetFrequency');
+        const newPresetColorInput = document.getElementById('newPresetColor'); // New color input
+        const parentFolderSelect = document.getElementById('parentFolderSelect'); // New folder select
+        const addPresetButton = document.getElementById('addPresetButton');
+        const newFolderNameInput = document.getElementById('newFolderName'); // New folder name input
+        const addFolderButton = document.getElementById('addFolderButton'); // New add folder button
+        const presetsList = document.getElementById('presetsList');
+        const presetsColumn = document.getElementById('presetsColumn'); // Get the presets column element
+        const presetsToggle = document.getElementById('presetsToggle'); // Get the toggle header
+
+        // Constants for mapping
+        const MIN_FREQ = 15;
+        const MAX_FREQ = 100;
+        const SWEEP_START_FREQ = 80; // Start frequency for sweep
+        const SWEEP_END_FREQ = 20;   // End frequency for sweep
+        const MAX_HARMONICS_COUNT = 12; // Max value for the harmonics count slider
+
+        // Volume mapped to Tone.js dB values.
+        const MIN_VOLUME_DB = -60; // Near silent
+        const MAX_VOLUME_DB = -5;  // Full volume (a bit below 0 to avoid clipping)
+        const SWEEP_VOLUME_DB = -10; // Volume for sweeps
+
+        // Fade durations in seconds
+        const FADE_IN_DURATION = 0.5; // 500ms
+        const FADE_OUT_DURATION = 1.0; // 1000ms
+        const GLIDE_TIME = 0.05; // Very short glide time for smooth continuous updates (50ms)
+
+        // Envelope parameters for attack/release smoothing
+        const ENVELOPE_ATTACK = 0.01; // Very fast attack to prevent clicks
+        const ENVELOPE_RELEASE = 0.2; // Short release for smooth fade-out
+
+        // Factor for logarithmic volume scaling. A power of 2 or 3 is common.
+        const LOG_VOLUME_POWER_FACTOR = 2; 
+
+        let currentFrequency = MIN_FREQ;
+        let currentVolumeDisplay = 0; // For display purposes (0-1 range)
+        let currentHarmonicsCount = parseInt(harmonicsCountSlider.value); // Initialize with slider value
+        let currentHarmonicDecayPercentage = parseInt(harmonicDecaySlider.value); // Initialize with slider value
+        let currentHarmonicIntervalFactor = parseFloat(harmonicIntervalFactorSlider.value); // Initialize with slider value
+
+        let isPresetsColumnCollapsed = false; // State for the presets column
+
+        /**
+         * Calculates the partials array for the Tone.Oscillator based on the number of harmonics, decay, and interval factor.
+         * The fundamental has an amplitude of 1. Subsequent harmonics' amplitudes are adjusted by decay and interval factor.
+         * @param {number} numHarmonics - The number of harmonics to generate.
+         * @param {number} decayPercentage - The percentage (0-100) of decay for each subsequent harmonic.
+         * @param {number} intervalFactor - The factor for harmonic interval (0.1 to 3.0).
+         * @returns {number[]} An array of amplitudes for the partials.
+         */
+        function calculatePartials(numHarmonics, decayPercentage, intervalFactor) {
+            const partials = [1]; // Fundamental frequency amplitude (always 1)
+            const decayRatio = decayPercentage / 100; // Convert percentage to a ratio (0.0 to 1.0)
+
+            for (let i = 1; i <= numHarmonics; i++) {
+                // Amplitude based on decay ratio
+                let amplitude = Math.pow(decayRatio, i);
+                
+                // Adjust amplitude by intervalFactor:
+                // Higher intervalFactor makes higher harmonics weaker (more rapid "decay" due to interval)
+                // Lower intervalFactor makes higher harmonics stronger (less rapid "decay" due to interval)
+                // We use (i + 1) because 'i' is the harmonic index (0-based for fundamental, 1 for 2nd, etc.)
+                // so the actual harmonic number is (i+1). This avoids pow(0, x) issues and correctly scales.
+                amplitude *= Math.pow(1 / (i + 1), intervalFactor - 1); // Apply a scaling relative to factor 1.0
+
+                partials.push(amplitude);
+            }
+            return partials;
+        }
+
+        /**
+         * Draws the current state of the main control canvas, including faint harmonic lines, the red circle, and active preset lines.
+         */
+        function drawCanvas() {
+            // Clear the canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Save the current context state before applying transformations
+            ctx.save();
+
+            // Draw faint vertical lines for harmonics based on the *max* harmonics count
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'; // Faint white lines
+            ctx.lineWidth = 1;
+
+            // Calculate spacing for lines dynamically based on the CSS width of the canvas
+            const cssWidth = canvas.getBoundingClientRect().width;
+            const spacing = cssWidth / MAX_HARMONICS_COUNT;
+
+            for (let i = 1; i <= MAX_HARMONICS_COUNT; i++) { // Draw lines up to the max possible harmonics
+                const xPos = i * spacing;
+                ctx.beginPath();
+                ctx.moveTo(xPos, 0);
+                ctx.lineTo(xPos, canvas.height);
+                ctx.stroke();
+            }
+
+            // Function to recursively draw active preset lines
+            function drawActivePresetLines(items) {
+                items.forEach(item => {
+                    if (item.type === 'preset' && item.isActive) {
+                        const lineX = mapFrequencyToX(item.frequency);
+                        ctx.beginPath();
+                        ctx.moveTo(lineX, 0);
+                        ctx.lineTo(lineX, canvas.height);
+                        ctx.strokeStyle = item.color + '80'; // Add 80 for 50% transparency (hex alpha)
+                        ctx.lineWidth = 4; // 4 pixels wide
+                        ctx.stroke();
+                    } else if (item.type === 'folder' && item.children) {
+                        drawActivePresetLines(item.children); // Recurse into folders
+                    }
+                });
+            }
+            drawActivePresetLines(presets); // Start drawing from the root presets array
+
+            // Draw the red circle if showCircle is true
+            if (showCircle) {
+                ctx.beginPath();
+                ctx.arc(circleX, circleY, CIRCLE_RADIUS, 0, Math.PI * 2, false);
+                ctx.fillStyle = 'red';
+                ctx.fill();
+                
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#CC0000'; // Darker red border
+                ctx.stroke();
+
+                // Draw the two vertical red lines following the red circle
+                const lineGap = 4; // 4px gap between the two lines
+                const lineHalfWidth = 2; // Each line is 2px wide (total 4px wide line)
+                const lineX1 = circleX - (lineGap / 2) - lineHalfWidth; // Left line's left edge
+                const lineX2 = circleX + (lineGap / 2) + lineHalfWidth; // Right line's right edge
+
+                // Left line
+                ctx.beginPath();
+                ctx.moveTo(lineX1, 0);
+                ctx.lineTo(lineX1, canvas.height);
+                ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)'; // 50% transparent red
+                ctx.lineWidth = 4; // 4 pixels wide
+                ctx.stroke();
+
+                // Right line
+                ctx.beginPath();
+                ctx.moveTo(lineX2, 0);
+                ctx.lineTo(lineX2, canvas.height);
+                ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)'; // 50% transparent red
+                ctx.lineWidth = 4; // 4 pixels wide
+                ctx.stroke();
+            }
+
+            // Restore the context state to remove any transformations applied in this function
+            ctx.restore();
+        }
+
+        /**
+         * Maps a frequency value to an X-coordinate on the canvas.
+         * @param {number} frequency - The frequency to map.
+         * @returns {number} The corresponding X-coordinate on the canvas (CSS pixels).
+         */
+        function mapFrequencyToX(frequency) {
+            const cssWidth = canvas.getBoundingClientRect().width;
+            return ((frequency - MIN_FREQ) / (MAX_FREQ - MIN_FREQ)) * cssWidth;
+        }
+
+        /**
+         * Maps an X-coordinate on the canvas to a frequency value.
+         * @param {number} x - The X-coordinate on the canvas (CSS pixels).
+         * @returns {number} The corresponding frequency.
+         */
+        function mapXToFrequency(x) {
+            const cssWidth = canvas.getBoundingClientRect().width;
+            return MIN_FREQ + (x / cssWidth) * (MAX_FREQ - MIN_FREQ);
+        }
+
+        /**
+         * Updates the target position for the red circle based on raw input coordinates.
+         * The actual circle position will be smoothed by inertia in the animation loop.
+         * @param {number} x - The raw x-coordinate from the event.
+         * @param {number} y - The raw y-coordinate from the event.
+         */
+        function updateTargetPosition(x, y) {
+            const rect = canvas.getBoundingClientRect();
+            // Clamp target position to canvas boundaries, considering circle radius
+            targetCircleX = Math.max(CIRCLE_RADIUS, Math.min(rect.width - CIRCLE_RADIUS, x));
+            targetCircleY = Math.max(CIRCLE_RADIUS, Math.min(rect.height - CIRCLE_RADIUS, y));
+        }
+
+        /**
+         * Updates the oscillator's frequency and volume based on the red circle's current position.
+         * This function is called continuously by the animation loop.
+         */
+        function updateSoundParameters() {
+            // Use the actual (interpolated) circle position for sound parameters
+            const freqX = circleX;
+            const volY = circleY;
+
+            // Map X-axis to frequency (left to right)
+            currentFrequency = MIN_FREQ + (freqX / canvas.getBoundingClientRect().width) * (MAX_FREQ - MIN_FREQ);
+            currentFrequency = Math.max(MIN_FREQ, Math.min(MAX_FREQ, currentFrequency)); // Clamp values
+
+            // Map Y-axis to volume (bottom to top, inverse Y-coordinate mapping)
+            const volumeNormalized_linear = 1 - (volY / canvas.getBoundingClientRect().height);
+            // Apply exponential curve for logarithmic perception
+            const volumeNormalized_logarithmic = Math.pow(volumeNormalized_linear, LOG_VOLUME_POWER_FACTOR);
+
+            // Map normalized 0-1 (logarithmic) to dB range MIN_VOLUME_DB to MAX_VOLUME_DB
+            // Ensure volumeDB is not -Infinity if volumeNormalized_logarithmic is 0 (prevents Tone.dbToGain errors)
+            const volumeDB = (volumeNormalized_logarithmic > 0) ? 
+                             (MIN_VOLUME_DB + volumeNormalized_logarithmic * (MAX_VOLUME_DB - MIN_VOLUME_DB)) : 
+                             -Infinity;
+            
+            // For display, show the linear normalized value (0-1)
+            currentVolumeDisplay = volumeNormalized_linear.toFixed(2);
+
+            // Update oscillator using setTargetAtTime for smooth glides
+            if (oscillator && gainNode && envelope) { // Ensure all nodes are available
+                oscillator.frequency.setTargetAtTime(currentFrequency, Tone.context.currentTime, GLIDE_TIME);
+                gainNode.gain.setTargetAtTime(Tone.dbToGain(volumeDB), Tone.context.currentTime, GLIDE_TIME); 
+            }
+
+            // Update display
+            frequencyDisplay.textContent = currentFrequency.toFixed(2);
+            volumeDisplay.textContent = currentVolumeDisplay;
+        }
+
+
+        /**
+         * Initializes Tone.js context, oscillator, gain node, and envelope.
+         * This is called once when the "Start Audio" button is clicked.
+         */
+        startAudioButton.addEventListener('click', async () => {
+            if (!contextStarted) {
+                try {
+                    console.log("Attempting to start Tone.js audio context...");
+                    await Tone.start(); // This starts the Web Audio Context
+                    contextStarted = true;
+                    console.log("Tone.js audio context state:", Tone.context.state);
+
+                    // Initialize oscillator
+                    oscillator = new Tone.Oscillator({
+                        type: "sine",
+                        frequency: currentFrequency, // Set initial frequency from last update or default
+                        partials: calculatePartials(currentHarmonicsCount, currentHarmonicDecayPercentage, currentHarmonicIntervalFactor), // Use initial slider values
+                        volume: 0 // Set oscillator internal volume to 0dB (unity gain)
+                    });
+
+                    // Initialize Amplitude Envelope
+                    envelope = new Tone.AmplitudeEnvelope({
+                        attack: ENVELOPE_ATTACK,
+                        decay: 0.1, // Not heavily used for this continuous interaction, but good practice
+                        sustain: 1.0, // Sustain at full level while active
+                        release: ENVELOPE_RELEASE
+                    });
+
+                    // Initialize Gain Node for overall volume control
+                    gainNode = new Tone.Gain(Tone.dbToGain(-Infinity)); // Start gain at silent
+
+                    // Connect oscillator -> envelope -> gainNode -> destination
+                    oscillator.connect(envelope);
+                    envelope.connect(gainNode);
+                    gainNode.toDestination();
+
+                    oscillator.start(); // Start the oscillator running in the background
+
+                    console.log("Oscillator, Envelope, and GainNode initialized."); 
+                    audioStartOverlay.classList.add('hidden'); // Hide the overlay
+
+                    // Start the animation loop for the circle and sound parameters
+                    animateCircle();
+
+                } catch (error) {
+                    console.error("Failed to start Tone.js audio context:", error);
+                    alert('Error: Could not start audio. Please ensure your browser allows audio playback and click the "Start Audio" button.');
+                }
+            }
+        });
+
+        /**
+         * Handles the start of sound interaction (mousedown/touchstart).
+         * Triggers the envelope's attack and shows the circle.
+         * @param {number} x - The x-coordinate of the interaction.
+         * @param {number} y - The y-coordinate of the interaction.
+         */
+        function startSoundInteraction(x, y) {
+            if (!contextStarted || !oscillator || !gainNode || !envelope) {
+                console.warn("Audio not ready. Please click 'Start Audio' first.");
+                return;
+            }
+
+            showCircle = true; // Show the circle
+            // Set initial target and current circle position directly to prevent a jump
+            updateTargetPosition(x, y); // Update target based on raw input
+            circleX = targetCircleX; // Immediately set circle to target for initial click
+            circleY = targetCircleY;
+
+            // Trigger the envelope's attack
+            envelope.triggerAttack();
+            console.log("Sound interaction started, envelope attack triggered.");
+
+            // Manual interaction does NOT deselect presets
+        }
+
+        /**
+         * Handles the end of sound interaction (mouseup/touchend/mouseleave/touchcancel).
+         * Fades out the volume of the persistent oscillator or sustains if button is not active, hides the circle.
+         */
+        function stopSoundInteraction() {
+            // Only trigger release if the sustain is NOT enabled
+            if (envelope && !isSustainEnabled) { 
+                envelope.triggerRelease();
+                console.log("Sound interaction stopped, envelope release triggered.");
+            } else if (isSustainEnabled) {
+                console.log("Sustain is active. Sound will continue playing.");
+            }
+            showCircle = false; // Hide the circle
+            // The animation loop will handle redrawing the canvas without the circle.
+        }
+
+        /**
+         * Triggers a frequency sweep from SWEEP_START_FREQ to SWEEP_END_FREQ over a given duration.
+         * @param {number} duration - The duration of the sweep in seconds.
+         */
+        function triggerSweep(duration) {
+            if (!contextStarted || !oscillator || !gainNode || !envelope) {
+                console.warn("Audio not ready. Please click 'Start Audio' first.");
+                return;
+            }
+
+            // Trigger envelope attack for the sweep
+            envelope.triggerAttack();
+
+            // Set initial frequency and then ramp to end frequency
+            oscillator.frequency.setValueAtTime(SWEEP_START_FREQ, Tone.context.currentTime); // Set start freq immediately
+            oscillator.frequency.linearRampToValueAtTime(SWEEP_END_FREQ, Tone.context.currentTime + duration);
+
+            // Set gain for the sweep
+            gainNode.gain.setValueAtTime(Tone.dbToGain(SWEEP_VOLUME_DB), Tone.context.currentTime);
+
+            // Trigger envelope release after sweep if sustain is not enabled
+            if (!isSustainEnabled) {
+                envelope.triggerRelease(Tone.context.currentTime + duration); // Release at the end of sweep
+            }
+            
+            // Update display at the end of the sweep
+            setTimeout(() => {
+                currentFrequency = SWEEP_END_FREQ; // Set frequency to end frequency for display
+                frequencyDisplay.textContent = currentFrequency.toFixed(2);
+            }, duration * 1000); // Convert duration to milliseconds
+        }
+
+        /**
+         * Updates harmonics count when the slider is moved.
+         */
+        function updateHarmonicsCountFromSlider() {
+            currentHarmonicsCount = parseInt(harmonicsCountSlider.value);
+            harmonicsCountDisplay.textContent = currentHarmonicsCount; // Update the LCD display
+            if (oscillator) {
+                // Smoothly update partials (harmonics) with new count, current decay, and interval factor
+                oscillator.set({ partials: calculatePartials(currentHarmonicsCount, currentHarmonicDecayPercentage, currentHarmonicIntervalFactor) });
+            }
+            // The animation loop will handle redrawing the canvas.
+        }
+
+        /**
+         * Updates harmonic decay when the slider is moved.
+         */
+        function updateHarmonicDecayFromSlider() {
+            currentHarmonicDecayPercentage = parseInt(harmonicDecaySlider.value);
+            harmonicDecayDisplay.textContent = currentHarmonicDecayPercentage; // Update the LCD display
+            if (oscillator) {
+                // Smoothly update partials (harmonics) with current count, new decay, and interval factor
+                oscillator.set({ partials: calculatePartials(currentHarmonicsCount, currentHarmonicDecayPercentage, currentHarmonicIntervalFactor) });
+            }
+        }
+
+        /**
+         * Updates harmonic interval factor when the slider is moved.
+         */
+        function updateHarmonicIntervalFactorFromSlider() {
+            currentHarmonicIntervalFactor = parseFloat(harmonicIntervalFactorSlider.value);
+            harmonicIntervalFactorDisplay.textContent = currentHarmonicIntervalFactor.toFixed(2); // Update the LCD display
+            if (oscillator) {
+                // Smoothly update partials (harmonics) with current count, decay, and new interval factor
+                oscillator.set({ partials: calculatePartials(currentHarmonicsCount, currentHarmonicDecayPercentage, currentHarmonicIntervalFactor) });
+            }
+        }
+
+        /**
+         * Updates the custom sweep duration display when its slider is moved.
+         */
+        function updateCustomSweepDurationDisplay() {
+            customSweepDurationDisplay.textContent = parseFloat(customSweepDurationSlider.value).toFixed(1);
+        }
+
+        /**
+         * Updates the inertia factor when its slider is moved.
+         */
+        function updateInertiaFromSlider() {
+            inertiaFactor = parseFloat(inertiaSlider.value);
+            inertiaDisplay.textContent = inertiaFactor.toFixed(2);
+        }
+
+        // --- Preset Management Functions (Local Storage) ---
+
+        /**
+         * Saves current presets to localStorage.
+         */
+        function savePresetsToLocalStorage() {
+            localStorage.setItem('lowflowPresets', JSON.stringify(presets));
+            console.log("Presets saved to Local Storage.");
+        }
+
+        /**
+         * Loads presets from localStorage.
+         */
+        function loadPresetsFromLocalStorage() {
+            const storedPresets = localStorage.getItem('lowflowPresets');
+            if (storedPresets) {
+                try {
+                    const loadedData = JSON.parse(storedPresets);
+                    // Ensure loaded data has necessary properties (e.g., isActive, expanded)
+                    function ensurePresetProps(items) {
+                        items.forEach(item => {
+                            if (item.type === 'preset') {
+                                if (typeof item.isActive === 'undefined') item.isActive = false;
+                            } else if (item.type === 'folder' && item.children) {
+                                if (typeof item.expanded === 'undefined') item.expanded = true; // Default to expanded
+                                ensurePresetProps(item.children);
+                            }
+                        });
+                    }
+                    ensurePresetProps(loadedData);
+                    presets = loadedData;
+                    console.log("Presets loaded from Local Storage.");
+                } catch (e) {
+                    console.error("Error parsing presets from Local Storage:", e);
+                    presets = []; // Clear presets on parse error
+                }
+            } else {
+                console.log("No presets found in Local Storage. Initializing with defaults.");
+                // Add some default presets and folders if none exist
+                presets = [
+                    { id: crypto.randomUUID(), type: 'folder', name: 'My Instruments', expanded: true, children: [
+                        { id: crypto.randomUUID(), type: 'preset', label: 'Guitar Low E', frequency: 82.4, color: '#00FF00', isActive: false },
+                        { id: crypto.randomUUID(), type: 'preset', label: 'Bass Low B', frequency: 30.8, color: '#0000FF', isActive: false }
+                    ]},
+                    { id: crypto.randomUUID(), type: 'folder', name: 'Standard 440Hz', expanded: false, children: [
+                        { id: crypto.randomUUID(), type: 'preset', label: 'A4', frequency: 440, color: '#FFFF00', isActive: false },
+                        { id: crypto.randomUUID(), type: 'preset', label: 'C5', frequency: 523.25, color: '#FF00FF', isActive: false }
+                    ]},
+                    { id: crypto.randomUUID(), type: 'preset', label: 'Custom Test', frequency: 75, color: '#FFFFFF', isActive: false } // Root level preset
+                ];
+                savePresetsToLocalStorage(); // Save defaults to Local Storage
+            }
+            renderPresets();
+        }
+
+        /**
+         * Renders the list of presets and folders recursively.
+         * @param {Array} items - The array of presets/folders to render.
+         * @param {HTMLElement} parentElement - The UL element to append to.
+         */
+        function renderPresets(items = presets, parentElement = presetsList) {
+            // Only clear the root list when called without arguments
+            if (parentElement === presetsList) {
+                parentElement.innerHTML = ''; 
+                updateParentFolderSelect(); // Update dropdown when main list is re-rendered
+            }
+
+            items.forEach(item => {
+                if (item.type === 'folder') {
+                    const folderLi = document.createElement('li');
+                    folderLi.className = `folder-item ${item.expanded ? 'expanded' : 'collapsed'}`;
+                    folderLi.dataset.id = item.id;
+                    folderLi.innerHTML = `
+                        <span>${item.name} <span class="folder-toggle-icon">&#9660;</span></span>
+                        <button class="delete-folder-button">X</button>
+                    `;
+                    parentElement.appendChild(folderLi);
+
+                    const folderUl = document.createElement('ul');
+                    folderUl.className = 'folder-content';
+                    parentElement.appendChild(folderUl);
+
+                    // Toggle expand/collapse
+                    folderLi.querySelector('span').addEventListener('click', () => {
+                        item.expanded = !item.expanded;
+                        savePresetsToLocalStorage(); // Save state change
+                        renderPresets(); // Re-render to apply expanded/collapsed state
+                    });
+
+                    // Delete folder
+                    folderLi.querySelector('.delete-folder-button').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        deleteItem(item.id, presets); // Pass the current array to delete from
+                    });
+
+                    if (item.expanded) {
+                        renderPresets(item.children, folderUl); // Recursively render children
+                    }
+
+                } else if (item.type === 'preset') {
+                    const li = document.createElement('li');
+                    li.className = `preset-item ${item.isActive ? 'active' : ''}`; // Apply 'active' class
+                    li.dataset.id = item.id;
+                    li.innerHTML = `
+                        <span class="preset-label">${item.label}</span>
+                        <span class="preset-freq">${item.frequency} Hz</span>
+                        <button class="delete-preset-button">X</button>
+                    `;
+                    parentElement.appendChild(li);
+
+                    // Apply dynamic background color if active
+                    if (item.isActive) {
+                        li.style.backgroundColor = item.color;
+                        li.style.borderColor = item.color;
+                    } else {
+                        li.style.backgroundColor = ''; // Revert to CSS default
+                        li.style.borderColor = '';
+                    }
+
+                    // Add event listener for toggling preset active state
+                    li.addEventListener('click', (e) => {
+                        if (!e.target.classList.contains('delete-preset-button')) {
+                            togglePresetActiveState(item.id);
+                        }
+                    });
+
+                    // Add event listener for deleting a preset
+                    li.querySelector('.delete-preset-button').addEventListener('click', (e) => {
+                        e.stopPropagation(); // Prevent toggling active state
+                        deleteItem(item.id, items); // Pass the current array to delete from
+                    });
+                }
+            });
+            drawCanvas(); // Redraw canvas to update preset lines
+        }
+
+        /**
+         * Recursively finds an item (preset or folder) by ID.
+         * @param {string} id - The ID of the item to find.
+         * @param {Array} items - The array to search within.
+         * @returns {object|null} The found item or null.
+         */
+        function findItemById(id, items) {
+            for (const item of items) {
+                if (item.id === id) {
+                    return item;
+                }
+                if (item.type === 'folder' && item.children) {
+                    const found = findItemById(id, item.children);
+                    if (found) return found;
+                }
+            }
+            return null;
+        }
+
+        /**
+         * Recursively deletes an item (preset or folder) by ID from an array.
+         * @param {string} id - The ID of the item to delete.
+         * @param {Array} itemsArray - The array from which to delete the item.
+         * @returns {boolean} True if deleted, false otherwise.
+         */
+        function deleteItem(id, itemsArray) {
+            const initialLength = itemsArray.length;
+            const newItemsArray = itemsArray.filter(item => item.id !== id);
+            
+            if (newItemsArray.length < initialLength) {
+                // Item was found and removed at this level
+                itemsArray.splice(0, itemsArray.length, ...newItemsArray);
+                savePresetsToLocalStorage(); // Save change
+                return true;
+            }
+
+            for (const item of itemsArray) {
+                if (item.type === 'folder' && item.children) {
+                    if (deleteItem(id, item.children)) { // Recursive call
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+
+        /**
+         * Adds a new preset.
+         */
+        addPresetButton.addEventListener('click', () => {
+            const label = newPresetLabelInput.value.trim();
+            const frequency = parseFloat(newPresetFrequencyInput.value);
+            const color = newPresetColorInput.value;
+            const parentId = parentFolderSelect.value;
+
+            if (label && !isNaN(frequency) && frequency >= MIN_FREQ && frequency <= MAX_FREQ) {
+                const newPreset = {
+                    id: crypto.randomUUID(),
+                    type: 'preset',
+                    label: label,
+                    frequency: frequency,
+                    color: color,
+                    isActive: false // New presets start as inactive
+                };
+
+                if (parentId === 'root') {
+                    presets.push(newPreset);
+                } else {
+                    const parentFolder = findItemById(parentId, presets);
+                    if (parentFolder && parentFolder.type === 'folder') {
+                        parentFolder.children.push(newPreset);
+                        parentFolder.expanded = true; // Expand folder when adding to it
+                    } else {
+                        alert("Selected parent folder not found or is not a folder.");
+                        return;
+                    }
+                }
+                savePresetsToLocalStorage(); // Save change
+                renderPresets();
+                newPresetLabelInput.value = '';
+                newPresetFrequencyInput.value = '';
+            } else {
+                alert(`Please enter a valid label and a frequency between ${MIN_FREQ} and ${MAX_FREQ} Hz.`);
+            }
+        });
+
+        /**
+         * Adds a new folder.
+         */
+        addFolderButton.addEventListener('click', () => {
+            const folderName = newFolderNameInput.value.trim();
+            if (folderName) {
+                const newFolder = {
+                    id: crypto.randomUUID(),
+                    type: 'folder',
+                    name: folderName,
+                    expanded: true,
+                    children: []
+                };
+                presets.push(newFolder);
+                savePresetsToLocalStorage(); // Save change
+                renderPresets();
+                newFolderNameInput.value = '';
+            } else {
+                alert("Please enter a folder name.");
+            }
+        });
+
+        /**
+         * Updates the parent folder select dropdown with current folders.
+         */
+        function updateParentFolderSelect() {
+            parentFolderSelect.innerHTML = '<option value="root">Root Folder</option>';
+            function addFoldersToSelect(items, indent = '') {
+                items.forEach(item => {
+                    if (item.type === 'folder') {
+                        const option = document.createElement('option');
+                        option.value = item.id;
+                        option.textContent = indent + item.name;
+                        parentFolderSelect.appendChild(option);
+                        addFoldersToSelect(item.children, indent + '-- '); // Recursive call for nested folders
+                    }
+                });
+            }
+            addFoldersToSelect(presets);
+        }
+
+        /**
+         * Toggles the active state of a preset.
+         * @param {string} id - The ID of the preset to toggle.
+         */
+        function togglePresetActiveState(id) {
+            const preset = findItemById(id, presets);
+            if (preset && preset.type === 'preset') {
+                preset.isActive = !preset.isActive; // Toggle the active state
+                savePresetsToLocalStorage(); // Save change
+                renderPresets(); // Re-render to update UI and canvas lines
+            }
+        }
+
+        /**
+         * Toggles the collapse state of the presets column.
+         */
+        function togglePresetsColumn() {
+            isPresetsColumnCollapsed = !isPresetsColumnCollapsed;
+            presetsColumn.classList.toggle('collapsed', isPresetsColumnCollapsed);
+            localStorage.setItem('lowflowPresetsColumnCollapsed', isPresetsColumnCollapsed);
+            drawCanvas(); // Redraw canvas to ensure lines are updated if layout changes
+        }
+
+        // --- Animation Loop for Circle Inertia and Sound Updates ---
+        function animateCircle() {
+            // Apply inertia: move current position towards target position
+            circleX += (targetCircleX - circleX) * (1 - inertiaFactor);
+            circleY += (targetCircleY - circleY) * (1 - inertiaFactor);
+
+            // Clamp actual circle position to canvas boundaries
+            const rect = canvas.getBoundingClientRect(); // Get current CSS dimensions
+            circleX = Math.max(CIRCLE_RADIUS, Math.min(rect.width - CIRCLE_RADIUS, circleX));
+            circleY = Math.max(CIRCLE_RADIUS, Math.min(rect.height - CIRCLE_RADIUS, circleY));
+
+            // Update sound parameters based on the actual (interpolated) circle position
+            // This is done continuously as long as the audio context is started
+            if (contextStarted) {
+                updateSoundParameters();
+            }
+
+            // Redraw canvas with the updated circle position and preset line
+            drawCanvas();
+
+            // Request the next frame
+            requestAnimationFrame(animateCircle);
+        }
+
+
+        // --- Event Listeners for Canvas Interaction ---
+        let isDragging = false;
+
+        function handleCanvasEvent(e) {
+            // Prevent default touch behaviors like scrolling/zooming
+            if (e.type.startsWith('touch')) {
+                e.preventDefault();
+            }
+
+            // Only proceed if audio context is started
+            if (!contextStarted) {
+                console.warn("Audio context not started. Interaction ignored.");
+                return;
+            }
+
+            const rect = canvas.getBoundingClientRect();
+            // Get client coordinates from mouse or first touch
+            const clientX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : undefined);
+            const clientY = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : undefined);
+
+            // If clientX/Y are undefined (e.g., touchcancel without valid coordinates), return
+            if (clientX === undefined || clientY === undefined) {
+                return;
+            }
+
+            // Calculate x, y relative to canvas (these are CSS pixels)
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+
+            if (e.type === 'mousedown' || e.type === 'touchstart') {
+                isDragging = true;
+                startSoundInteraction(x, y);
+            } else if ((e.type === 'mousemove' || e.type === 'touchmove') && isDragging) {
+                // Always update target position based on current cursor/touch, even if out of canvas
+                updateTargetPosition(x, y);
+            } else if (e.type === 'mouseup' || e.type === 'touchend' || e.type === 'touchcancel') {
+                // Only stop sound if was previously dragging and interaction ends
+                if (isDragging) { 
+                    isDragging = false;
+                    stopSoundInteraction();
+                }
+            }
+            // Note: mouseleave event no longer triggers stopSoundInteraction if dragging.
+            // Sound and circle persist until mouseup/touchend/touchcancel.
+        }
+
+        // Attach all event listeners to the single handler function
+        canvas.addEventListener('mousedown', handleCanvasEvent);
+        canvas.addEventListener('mousemove', handleCanvasEvent);
+        canvas.addEventListener('mouseup', handleCanvasEvent);
+
+        canvas.addEventListener('touchstart', handleCanvasEvent, { passive: false });
+        canvas.addEventListener('touchmove', handleCanvasEvent, { passive: false });
+        canvas.addEventListener('touchend', handleCanvasEvent);
+        canvas.addEventListener('touchcancel', handleCanvasEvent);
+
+        // Event listener for the harmonics count slider
+        harmonicsCountSlider.addEventListener('input', updateHarmonicsCountFromSlider);
+        // Event listener for the harmonic decay slider
+        harmonicDecaySlider.addEventListener('input', updateHarmonicDecayFromSlider);
+        // Event listener for the new harmonic interval factor slider
+        harmonicIntervalFactorSlider.addEventListener('input', updateHarmonicIntervalFactorFromSlider);
+
+        // Event listener for custom sweep button
+        customSweepButton.addEventListener('click', () => {
+            const duration = parseFloat(customSweepDurationSlider.value);
+            triggerSweep(duration);
+        });
+
+        // Event listener for custom sweep duration slider
+        customSweepDurationSlider.addEventListener('input', updateCustomSweepDurationDisplay);
+
+        // Event listener for Sustain button
+        sustainButton.addEventListener('click', () => {
+            isSustainEnabled = !isSustainEnabled; // Toggle sustain state
+            sustainButton.classList.toggle('active', isSustainEnabled); // Toggle 'active' class
+            if (!isSustainEnabled && envelope) {
+                // If sustain is turned off while a sound is playing, trigger release
+                envelope.triggerRelease();
+            } else if (isSustainEnabled && !isDragging && envelope && Tone.context.state === 'running') {
+                // If sustain is turned on, and no current drag, set circle to center and show it
+                circleX = canvas.width / 2;
+                circleY = canvas.height / 2;
+                targetCircleX = circleX;
+                targetCircleY = circleY;
+                showCircle = true;
+            } else if (!isSustainEnabled && !isDragging && envelope) {
+                 // If sustain is turned OFF and not dragging, hide circle
+                 showCircle = false;
+            }
+            console.log("Sustain Toggled:", isSustainEnabled);
+        });
+
+        // Event listener for Inertia slider
+        inertiaSlider.addEventListener('input', updateInertiaFromSlider);
+
+        // Add event listener for the presets column toggle
+        presetsToggle.addEventListener('click', togglePresetsColumn);
+
+
+        // Initial display and canvas draw
+        frequencyDisplay.textContent = currentFrequency.toFixed(2);
+        volumeDisplay.textContent = currentVolumeDisplay;
+        // Call update functions to set initial LCD display values
+        updateHarmonicsCountFromSlider(); 
+        updateHarmonicDecayFromSlider(); 
+        updateHarmonicIntervalFactorFromSlider(); 
+        customSweepDurationDisplay.textContent = parseFloat(customSweepDurationSlider.value).toFixed(1); // Set initial display for custom sweep duration
+        inertiaDisplay.textContent = inertiaFactor.toFixed(2); // Set initial display for inertia
+        drawCanvas(); // Draw main canvas initially
+
+        // Handle canvas resizing to maintain aspect ratio and clear drawings
+        window.addEventListener('resize', () => {
+            const rect = canvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1; // Get device pixel ratio
+
+            // Set canvas internal dimensions to match display size * devicePixelRatio
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+
+            // Scale the drawing context to match the CSS size
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // Reset and apply scale
+
+            // Re-clamp targetCircleX/Y and circleX/Y to new CSS canvas bounds
+            // Note: These coordinates are still in CSS pixels, as the scaling is handled by ctx.scale
+            targetCircleX = Math.max(CIRCLE_RADIUS, Math.min(rect.width - CIRCLE_RADIUS, targetCircleX));
+            targetCircleY = Math.max(CIRCLE_RADIUS, Math.min(rect.height - CIRCLE_RADIUS, circleY));
+            circleX = Math.max(CIRCLE_RADIUS, Math.min(rect.width - CIRCLE_RADIUS, circleX));
+            circleY = Math.max(CIRCLE_RADIUS, Math.min(rect.height - CIRCLE_RADIUS, circleY));
+            
+            drawCanvas(); // Redraw control canvas content
+        });
+
+        // Trigger resize event once to set initial canvas dimensions based on CSS
+        // This should be the only place where canvas.width/height and ctx.scale are set initially
+        window.dispatchEvent(new Event('resize'));
+
+        // Load presets on initial page load
+        loadPresetsFromLocalStorage();
+        // Load initial state of presets column after presets are loaded
+        const storedColumnState = localStorage.getItem('lowflowPresetsColumnCollapsed');
+        if (storedColumnState !== null) {
+            isPresetsColumnCollapsed = JSON.parse(storedColumnState);
+            presetsColumn.classList.toggle('collapsed', isPresetsColumnCollapsed);
+        }
+    </script>
+</body>
+</html>
